@@ -40,7 +40,7 @@ jobs:
         id: ios-pack
         shell: bash
         run: |
-          npm pack --pack-destination /tmp --json > /tmp/expo-callkit-ios-pack.json
+          npm pack --pack-destination /tmp --json --silent > /tmp/expo-callkit-ios-pack.json
           filename="$(node -e "const p=require('/tmp/expo-callkit-ios-pack.json'); process.stdout.write(p[0].filename)")"
           echo "tarball=/tmp/$filename" >> "$GITHUB_OUTPUT"
       - run: >-
@@ -93,7 +93,7 @@ jobs:
         id: pack
         shell: bash
         run: |
-          npm pack --pack-destination /tmp --json > /tmp/expo-callkit-pack.json
+          npm pack --pack-destination /tmp --json --silent > /tmp/expo-callkit-pack.json
           filename="$(node -e "const p=require('/tmp/expo-callkit-pack.json'); process.stdout.write(p[0].filename)")"
           echo "tarball=/tmp/$filename" >> "$GITHUB_OUTPUT"
       - run: >-

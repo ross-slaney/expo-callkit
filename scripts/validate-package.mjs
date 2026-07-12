@@ -70,7 +70,7 @@ assert(
 
 const packOutput = execFileSync(
   process.platform === "win32" ? "npm.cmd" : "npm",
-  ["pack", "--dry-run", "--json", "--ignore-scripts"],
+  ["pack", "--dry-run", "--json", "--ignore-scripts", "--silent"],
   { encoding: "utf8" }
 );
 const pack = JSON.parse(packOutput)[0];
