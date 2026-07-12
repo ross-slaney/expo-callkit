@@ -1,0 +1,28 @@
+name: Publish to GitHub Packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@ross-slaney'
+      # npm ci runs "prepare" (expo-module prepare), which builds both the
+      # module (build/) and the config plugin (plugin/build/).
+      - run: npm ci
+      - run: npm test -- --ci
+        env:
+          CI: true
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
