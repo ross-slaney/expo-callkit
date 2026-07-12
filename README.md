@@ -99,8 +99,8 @@ import { useEffect } from "react";
 
 export function useCallEngine(acs: MyAcsMediaLayer) {
   useEffect(() => {
-    // Mount these listeners as early as possible (app root). Events fired
-    // before JS was ready (cold starts) are replayed with meta.flushed=true.
+    // Mount these listeners as early as possible (app root). Replay-safe call
+    // state events fired before JS was ready use meta.flushed=true.
     const subs = [
       CallKit.addCallKitListener("onIncomingCall", ({ callId, payload }) => {
         // System UI is already ringing. Prepare your media layer.
@@ -271,7 +271,12 @@ All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`,
 | `onAudioSessionDeactivated` | `{}` — stop audio I/O                                     |
 | `onVoipTokenUpdated`        | `{ token: string \| null, type }`                         |
 
-`onIncomingCall`, `onCallAnswered`, `onCallEnded`, `onVoipTokenUpdated` and `onAudioSessionActivated` are buffered natively (latest occurrence) and replayed with `meta.flushed: true` when JS mounts its listener — cold-started answers and killed-state declines are not lost.
+`onIncomingCall`, `onCallAnswered`, `onCallEnded`, and `onVoipTokenUpdated` are
+buffered natively (latest occurrence) and replayed with `meta.flushed: true`
+when JS mounts its listener — cold-started answers and killed-state declines
+are not lost. Audio activation/deactivation events are realtime-only: replaying
+an old activation after the system deactivated audio could incorrectly restart
+media, so mount both audio listeners at the app root before accepting a call.
 
 ## Design notes / limitations
 

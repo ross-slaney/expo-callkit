@@ -10,6 +10,8 @@ sourceSets {
     main {
         kotlin.srcDir("../../android/src/main/java")
         kotlin.include("dev/rossslaney/expocallkit/PendingAnswers.kt")
+        kotlin.include("dev/rossslaney/expocallkit/Models.kt")
+        kotlin.include("dev/rossslaney/expocallkit/EventReplayPolicy.kt")
     }
 }
 

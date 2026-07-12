@@ -8,6 +8,8 @@
   answers synchronously before their request ids are emitted.
 - iOS: deterministically tear down failed/timed-out answers and handle CallKit's
   own action-timeout callback without touching an action after it expires.
+- iOS: atomically reserve the single-call slot across JS, PushKit, and outgoing
+  entry points so concurrent reports cannot admit multiple calls.
 - Android: enforce API 26 at build time, coalesce concurrent answer surfaces
   into one request, and use `CallControlScope.answer` for app-originated
   incoming answers.
@@ -16,6 +18,8 @@
   budget.
 - Android: preserve one continuous CallStyle notification across incoming,
   connecting, and connected states.
+- Events: keep audio activation/deactivation realtime-only on both platforms;
+  stale activation events are never replayed to late JS listeners.
 - Tests: add native Swift and Kotlin lifecycle suites plus native CI smoke
   builds for Expo SDK 54.
 - Distribution: prepare public npm publishing with explicit package contents,

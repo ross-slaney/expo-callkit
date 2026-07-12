@@ -14,9 +14,21 @@ let package = Package(
       name: "ExpoCallKitPendingAnswers",
       path: "ios/PendingAnswersCore"
     ),
+    .target(
+      name: "ExpoCallKitCallRegistry",
+      path: "ios/CallRegistryCore"
+    ),
+    .target(
+      name: "ExpoCallKitEventPolicy",
+      path: "ios/EventCore"
+    ),
     .testTarget(
       name: "ExpoCallKitPendingAnswersTests",
-      dependencies: ["ExpoCallKitPendingAnswers"],
+      dependencies: [
+        "ExpoCallKitPendingAnswers",
+        "ExpoCallKitCallRegistry",
+        "ExpoCallKitEventPolicy",
+      ],
       path: "native-tests/ios"
     ),
   ]
