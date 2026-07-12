@@ -1,0 +1,14 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`applyInfoPlistEntries writes background modes, mic text and timeout keys 1`] = `
+{
+  "ExpoCallKitAnswerFulfillTimeout": 30,
+  "ExpoCallKitIncomingTimeout": 45,
+  "ExpoCallKitOutgoingTimeout": 60,
+  "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access the microphone during calls",
+  "UIBackgroundModes": [
+    "voip",
+    "audio",
+  ],
+}
+`;
