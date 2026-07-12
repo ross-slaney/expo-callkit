@@ -67,8 +67,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {
-    "node": ">=20.19.4",
-    "npm": ">=10.8.2"
+    "node": ">=20.19.4"
   },
   "jest": {
     "preset": "expo-module-scripts"
