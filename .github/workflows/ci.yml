@@ -40,9 +40,8 @@ jobs:
         id: ios-pack
         shell: bash
         run: |
-          npm pack --pack-destination /tmp --json --silent > /tmp/expo-callkit-ios-pack.json
-          filename="$(node -e "const p=require('/tmp/expo-callkit-ios-pack.json'); process.stdout.write(p[0].filename)")"
-          echo "tarball=/tmp/$filename" >> "$GITHUB_OUTPUT"
+          tarball="$(node scripts/pack-artifact.mjs /tmp)"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
       - run: >-
           npx create-expo-app@4.0.0 /tmp/expo-callkit-ios-smoke
           --template expo-template-blank@sdk-54 --yes
@@ -93,9 +92,8 @@ jobs:
         id: pack
         shell: bash
         run: |
-          npm pack --pack-destination /tmp --json --silent > /tmp/expo-callkit-pack.json
-          filename="$(node -e "const p=require('/tmp/expo-callkit-pack.json'); process.stdout.write(p[0].filename)")"
-          echo "tarball=/tmp/$filename" >> "$GITHUB_OUTPUT"
+          tarball="$(node scripts/pack-artifact.mjs /tmp)"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
       - run: >-
           npx create-expo-app@4.0.0 /tmp/expo-callkit-smoke
           --template expo-template-blank@sdk-54 --yes

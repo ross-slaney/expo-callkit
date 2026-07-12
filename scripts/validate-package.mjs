@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+
+import { runNpmPack } from "./npm-pack-json.mjs";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url))
@@ -68,12 +69,7 @@ assert(
   "Android native metadata must derive its version from package.json"
 );
 
-const packOutput = execFileSync(
-  process.platform === "win32" ? "npm.cmd" : "npm",
-  ["pack", "--dry-run", "--json", "--ignore-scripts", "--silent"],
-  { encoding: "utf8" }
-);
-const pack = JSON.parse(packOutput)[0];
+const [pack] = runNpmPack(["--dry-run", "--ignore-scripts"]);
 const files = new Set(pack.files.map(({ path }) => path));
 
 const requiredFiles = [
