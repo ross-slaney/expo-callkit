@@ -232,7 +232,6 @@ class ExpoCallKitModule : Module() {
         } ?: return
 
         intent.action = null
-        appContext.reactContext?.let { CallNotifications.dismiss(it) }
         CallEngine.handleAnswer(id)
     }
 

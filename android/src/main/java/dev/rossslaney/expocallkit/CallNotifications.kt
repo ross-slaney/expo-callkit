@@ -1,5 +1,6 @@
 package dev.rossslaney.expocallkit
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -140,6 +141,26 @@ object CallNotifications {
         post(context, notification)
     }
 
+    /**
+     * Replaces the incoming notification immediately after the winning answer
+     * transition. It intentionally uses the same notification id, leaving no
+     * interval where Core-Telecom sees a call without a valid CallStyle.
+     */
+    fun showConnecting(context: Context, callId: UUID, remoteName: String?) {
+        val name = remoteName ?: "Unknown"
+        val hangupPI = actionBroadcast(context, callId, CKIntents.ACTION_DECLINE, 3)
+
+        val notification = base(context, ONGOING_CHANNEL, name)
+            .setContentText("Connecting…")
+            .setStyle(NotificationCompat.CallStyle.forOngoingCall(person(name), hangupPI))
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setShowWhen(false)
+            .build()
+
+        post(context, notification)
+    }
+
     fun showOngoing(context: Context, callId: UUID, remoteName: String?, connectedAtMs: Long) {
         val name = remoteName ?: "Unknown"
         val hangupPI = actionBroadcast(context, callId, CKIntents.ACTION_DECLINE, 3)
@@ -190,6 +211,10 @@ object CallNotifications {
     private fun person(name: String): Person =
         Person.Builder().setName(name).setImportant(true).build()
 
+    // Self-managed CallStyle calls are exempt from Android 13's notification
+    // runtime permission. Still catch SecurityException/vendor failures so a
+    // notification policy difference cannot crash the call process.
+    @SuppressLint("MissingPermission")
     private fun post(context: Context, notification: Notification) {
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)

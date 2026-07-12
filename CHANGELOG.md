@@ -6,9 +6,18 @@
   answers synchronously before their request ids are emitted.
 - iOS: deterministically tear down failed/timed-out answers and handle CallKit's
   own action-timeout callback without touching an action after it expires.
-- Tests: add a native Swift lifecycle suite and a macOS CI job.
+- Android: enforce API 26 at build time, coalesce concurrent answer surfaces
+  into one request, and use `CallControlScope.answer` for app-originated
+  incoming answers.
+- Android: keep Core-Telecom's system answer callback suspended until the app
+  acknowledges media readiness, with deterministic failure inside a 4.5 s
+  budget.
+- Android: preserve one continuous CallStyle notification across incoming,
+  connecting, and connected states.
+- Tests: add native Swift and Kotlin lifecycle suites plus native CI smoke
+  builds for Expo SDK 54.
 - Docs: clarify the signaling/media ownership contract and correct the APNs
-  expiration and force-quit guidance.
+  expiration, force-quit, Android deadline, and compatibility guidance.
 
 ## 0.1.0
 

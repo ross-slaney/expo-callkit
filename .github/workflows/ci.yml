@@ -30,3 +30,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: swift test
+
+  android-native:
+    name: Android native tests + SDK 54 smoke build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - run: gradle --project-dir native-tests/android test
+      - run: npm ci
+      - run: >-
+          npx create-expo-app@4.0.0 /tmp/expo-callkit-smoke
+          --template expo-template-blank@sdk-54 --yes
+      - run: npm install "$GITHUB_WORKSPACE"
+        working-directory: /tmp/expo-callkit-smoke
+      - run: npx expo prebuild --platform android --no-install
+        working-directory: /tmp/expo-callkit-smoke
+      - run: >-
+          ./gradlew -Pandroid.minSdkVersion=26
+          :ross-slaney-expo-callkit:compileDebugKotlin
+          :app:processDebugMainManifest --console=plain
+        working-directory: /tmp/expo-callkit-smoke/android

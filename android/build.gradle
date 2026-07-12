@@ -24,9 +24,10 @@ if (useManagedAndroidSdkVersions) {
   project.android {
     compileSdkVersion safeExtGet("compileSdkVersion", 36)
     defaultConfig {
-      // androidx.core:core-telecom requires API 26+. Consumers must raise
-      // minSdkVersion to at least 26 (e.g. via expo-build-properties).
-      minSdkVersion safeExtGet("minSdkVersion", 26)
+      // CallsManager is @RequiresApi(26). Never inherit a lower app/root
+      // default: the manifest merger should reject an incompatible consumer
+      // at build time instead of shipping an API 24/25 runtime crash.
+      minSdkVersion Math.max(26, safeExtGet("minSdkVersion", 26) as int)
       targetSdkVersion safeExtGet("targetSdkVersion", 36)
     }
   }
@@ -37,9 +38,6 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
-  }
-  lintOptions {
-    abortOnError false
   }
 }
 

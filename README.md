@@ -20,6 +20,20 @@ Call *media* is your app's job (e.g. the Azure Communication Services calling SD
 
 Requires a **custom dev client / EAS build** — none of this works in Expo Go, and CallKit/PushKit do not function on the iOS Simulator.
 
+### Compatibility
+
+| Surface | Validated baseline | Minimum |
+| --- | --- | --- |
+| Expo / React Native | Expo SDK 54 / React Native 0.81 | Other Expo SDKs are not yet certified in native CI |
+| iOS | Xcode 16.2, Swift 5.9 module mode | iOS 15.1 |
+| Android | compile/target SDK 36, Kotlin 2.1.20 | API 26 (Android 8.0) |
+
+The Android AAR enforces API 26. A consuming app configured below 26 fails its
+manifest merge at build time instead of shipping a device-specific
+`CallsManager` crash. The wildcard peer ranges describe package resolution,
+not a compatibility promise; expand this table only after native smoke builds
+are added for another Expo SDK.
+
 ## Installation
 
 The package is published to **GitHub Packages**, which requires authentication even for public packages. Create a classic personal access token with the `read:packages` scope ([github.com/settings/tokens](https://github.com/settings/tokens)), then add to your project's `.npmrc`:
@@ -34,7 +48,7 @@ export GITHUB_PACKAGES_TOKEN=ghp_your_token   # or set it in CI secrets
 npx expo install @ross-slaney/expo-callkit
 ```
 
-Add the config plugin (autolinking links native code, but plugins are never auto-applied) and raise the Android minSdk to 26 (required by `androidx.core:core-telecom`):
+Add the config plugin (autolinking links native code, but plugins are never auto-applied) and raise the Android minSdk to 26 (required and enforced by `androidx.core:core-telecom`):
 
 ```jsonc
 // app.json
@@ -63,7 +77,7 @@ Then rebuild the native projects: `npx expo prebuild --clean && npx expo run:ios
 | --- | --- | --- |
 | `microphonePermissionText` | "Allow $(PRODUCT_NAME) to access the microphone during calls" | `NSMicrophoneUsageDescription` |
 | `incomingCallTimeout` | `45` (seconds) | Ring time before auto-end as `unanswered` |
-| `answerFulfillTimeout` | `30` (seconds) | Time allowed between `onCallAnswered` and `answerAcknowledged` |
+| `answerFulfillTimeout` | `30` (seconds) | Time allowed between `onCallAnswered` and `answerAcknowledged`; Android system-surface callbacks are capped at 4.5 s |
 | `outgoingCallTimeout` | `60` (seconds) | Unconnected outgoing call auto-end |
 | `ringtone` | system default | iOS bundle sound filename / Android `res/raw` resource name |
 | `androidCallEventReceiver` | — | FQCN of an app `BroadcastReceiver` for `dev.rossslaney.expocallkit.CALL_EVENT` |
@@ -91,7 +105,8 @@ export function useCallEngine(acs: MyAcsMediaLayer) {
       CallKit.addCallKitListener("onCallAnswered", async ({ callId, requestId }) => {
         // The user tapped answer. Establish the remote media session first,
         // but keep audio I/O stopped until onAudioSessionActivated below.
-        // iOS holds the system action open until you resolve it (or a timeout).
+        // iOS holds the system action open. Android system surfaces (wearable,
+        // Bluetooth, Auto) give the app less than five seconds to finish.
         try {
           await acs.join({ startAudio: false });   // signaling/media is connected
           await CallKit.answerAcknowledged(requestId);
@@ -101,7 +116,7 @@ export function useCallEngine(acs: MyAcsMediaLayer) {
       }),
 
       CallKit.addCallKitListener("onAudioSessionActivated", () => {
-        acs.startAudio();   // do NOT start audio I/O before this event (iOS)
+        acs.startAudio();   // do NOT start audio I/O before this event
       }),
       CallKit.addCallKitListener("onAudioSessionDeactivated", () => {
         acs.stopAudio();
@@ -189,6 +204,21 @@ Caveat: this requires JS to be running (headless JS / background message handler
 
 Before the first call, request notification permission (Android 13+): `await CallKit.requestPermissions()`.
 
+Answering from the app's notification or lock-screen UI waits for
+`answerAcknowledged`, then calls `CallControlScope.answer(...)`; the call is
+marked connected only if Telecom accepts that operation. Answers initiated by
+a wearable, Bluetooth device, Android Auto, or another system surface run
+inside Core-Telecom's five-second suspend callback. This module reserves the
+last 500 ms for native cleanup, so your handler has at most **4.5 seconds** to
+join media and call `answerAcknowledged`. `answerFulfillTimeout` cannot extend
+that platform deadline. If media is not ready, call `answerFailed`; the module
+throws from the callback and tears the call down deterministically.
+
+During this work the same notification id transitions directly from incoming
+CallStyle → connecting CallStyle → ongoing CallStyle. Do not cancel or replace
+the package notification from application code; Core-Telecom keeps foreground
+execution priority only while a valid CallStyle remains posted.
+
 ### Azure Communication Services notes
 
 - Backend: `CommunicationIdentityClient` issues `voip`-scoped tokens; Call Automation (`CreateCall`/`AddParticipant` targeting the user's ACS identity) makes the phone ring.
@@ -237,6 +267,7 @@ All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`,
 - **Single-call model**: one call at a time (`maximumCallGroups = 1`). A second incoming call while busy rings out (`unanswered` on the caller's side); no call waiting.
 - **`hasVideo` is cosmetic**: it flavors the system UI ("Video" badge / notification text). Telecom registration is audio-capability only; video media is entirely yours.
 - Android `setMuted` and mute events are bookkeeping around the system UI; your media layer owns the actual microphone.
+- Android Core-Telecom answer callbacks wait for the existing media acknowledgement contract. Hold/active/disconnect callbacks still emit state for your media layer; this package does not pretend those events prove transport-level mute, resume, or shutdown.
 - `onDtmf` only fires on iOS (CallKit keypad). Android core-telecom has no DTMF callback.
 - iOS "local" ends: user hangups via system UI and failed answers both surface as `reason: "local"` from `CXEndCallAction`.
 
@@ -250,10 +281,11 @@ Simulators cannot exercise this stack (no PushKit tokens, no CallKit UI). On rea
 4. **iOS invalid payload push** → brief "Unknown Caller" flash then ends; app not killed; pushes keep flowing.
 5. **iOS answer-fulfill timeout**: answer but never call `answerAcknowledged` → call fails after 30 s.
 6. **Token**: `onVoipTokenUpdated` fires on first launch; token reaches your backend.
-7. **Android ring**: notification + full-screen lock-screen activity; answer from notification (warm + cold start), answer from lock screen, decline from both.
+7. **Android ring**: notification + full-screen lock-screen activity; answer from notification (warm + cold start), answer from lock screen, decline from both. Confirm the notification changes to “Connecting…” without disappearing, then starts its chronometer only after media acknowledgement.
 8. **Android killed-state decline** → manifest receiver gets the `CALL_EVENT` broadcast; next launch flushes `onCallEnded`.
 9. **Android 13+ permission**: deny POST_NOTIFICATIONS → `requestPermissions()` reports `denied`; ring is silent (document to users).
 10. **Both**: unanswered call auto-ends at `incomingCallTimeout`; outgoing call auto-ends at `outgoingCallTimeout`; mute/hold toggles from system UI emit events.
+11. **Android remote surface**: answer from a paired Bluetooth device, wearable, or Android Auto; media acknowledgement within 4.5 s connects, while rejection/no acknowledgement fails before Core-Telecom's 5 s deadline.
 
 ## Development
 
@@ -262,6 +294,8 @@ npm install        # runs prepare → builds module + plugin
 npm test           # jest (4 platform projects)
 npm run typecheck
 npm run lint
+swift test         # iOS lifecycle state machine
+gradle --project-dir native-tests/android test
 ```
 
 Releases: publish a GitHub release — the `publish.yml` workflow builds, tests and publishes to GitHub Packages.
