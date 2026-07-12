@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- iOS: remove the cold-start acknowledgement race by registering pending
+  answers synchronously before their request ids are emitted.
+- iOS: deterministically tear down failed/timed-out answers and handle CallKit's
+  own action-timeout callback without touching an action after it expires.
+- Tests: add a native Swift lifecycle suite and a macOS CI job.
+- Docs: clarify the signaling/media ownership contract and correct the APNs
+  expiration and force-quit guidance.
+
 ## 0.1.0
 
 Initial release.

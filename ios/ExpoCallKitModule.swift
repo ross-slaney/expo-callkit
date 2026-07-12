@@ -187,11 +187,11 @@ public final class ExpoCallKitModule: Module {
 
     AsyncFunction("answerAcknowledged") { (requestId: String) in
       // No-op when the request already resolved (raced a timeout).
-      _ = await PendingAnswers.shared.acknowledge(try Self.parseUuid(requestId))
+      _ = PendingAnswers.shared.acknowledge(try Self.parseUuid(requestId))
     }
 
     AsyncFunction("answerFailed") { (requestId: String) in
-      _ = await PendingAnswers.shared.fail(try Self.parseUuid(requestId))
+      _ = PendingAnswers.shared.fail(try Self.parseUuid(requestId))
     }
 
     AsyncFunction("endCall") { (callId: String) in

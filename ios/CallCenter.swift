@@ -266,9 +266,7 @@ final class CallCenter: NSObject {
   /// optionally informs CallKit, emits `onCallEnded`, removes the call.
   func concludeCall(_ id: UUID, reason: EndReason, reportToProvider: Bool) {
     cancelRingTimeout(for: id)
-    Task {
-      await PendingAnswers.shared.abandon(callId: id)
-    }
+    PendingAnswers.shared.abandon(callId: id)
 
     guard var ended = removeCall(id) else {
       return

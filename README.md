@@ -11,6 +11,13 @@ This module owns the *system* side of calling only:
 
 Call *media* is your app's job (e.g. the Azure Communication Services calling SDK). The module tells you when to connect (`onCallAnswered`) and when audio I/O may start (`onAudioSessionActivated`); you tell it when media is up (`answerAcknowledged`, `reportOutgoingCallConnected`).
 
+> **This package is CallKit/Telecom plumbing, not a phone service or media
+> stack.** Installing it does not provision a phone number, route calls, send
+> VoIP pushes, or carry audio. Your backend/signaling provider must deliver the
+> incoming call, and your app's media SDK must join it. Calling
+> `answerAcknowledged` without a connected media session only produces a
+> system UI that says “connected” while the user hears silence.
+
 Requires a **custom dev client / EAS build** — none of this works in Expo Go, and CallKit/PushKit do not function on the iOS Simulator.
 
 ## Installation
@@ -82,13 +89,14 @@ export function useCallEngine(acs: MyAcsMediaLayer) {
       }),
 
       CallKit.addCallKitListener("onCallAnswered", async ({ callId, requestId }) => {
-        // The user tapped answer; iOS holds the system action open until you
-        // resolve it (or the answerFulfillTimeout fires).
+        // The user tapped answer. Establish the remote media session first,
+        // but keep audio I/O stopped until onAudioSessionActivated below.
+        // iOS holds the system action open until you resolve it (or a timeout).
         try {
-          await acs.join();                        // connect media
+          await acs.join({ startAudio: false });   // signaling/media is connected
           await CallKit.answerAcknowledged(requestId);
         } catch {
-          await CallKit.answerFailed(requestId);   // OS tears the call down
+          await CallKit.answerFailed(requestId);   // native + system call tear down
         }
       }),
 
@@ -109,6 +117,13 @@ export function useCallEngine(acs: MyAcsMediaLayer) {
   }, []);
 }
 ```
+
+`answerAcknowledged(requestId)` means “the call can genuinely proceed,” not
+“the app received the event.” Call it only after the media/signaling layer has
+joined successfully. If no media implementation is installed, connection
+fails, or the requested call no longer exists, call `answerFailed(requestId)`.
+The module then fails the pending CallKit answer and deterministically ends its
+native call session.
 
 Remote hangup / answered-on-another-device? Tell the module: `CallKit.reportCallEnded(callId, "remoteEnded")` (or `"answeredElsewhere"`, ...).
 
@@ -134,7 +149,7 @@ CallKit.addCallKitListener("onVoipTokenUpdated", ({ token }) => syncToBackend(to
 
 ### VoIP push payload shape (server → APNs)
 
-Send to APNs with headers `apns-push-type: voip`, `apns-priority: 10`, `apns-topic: <bundle-id>.voip`. The body must wrap the call under a top-level `incomingCall` key:
+Send to APNs with headers `apns-push-type: voip`, `apns-priority: 10`, `apns-expiration: 0`, `apns-topic: <bundle-id>.voip`. The zero expiration prevents a stale ring from being delivered after the call is already gone. The body must wrap the call under a top-level `incomingCall` key:
 
 ```json
 {
@@ -230,7 +245,7 @@ All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`,
 Simulators cannot exercise this stack (no PushKit tokens, no CallKit UI). On real devices verify:
 
 1. **iOS foreground ring**: `reportIncomingCall` from JS → full-screen ring → answer → `onCallAnswered` → `answerAcknowledged` → timer runs → hang up → `onCallEnded(local)`.
-2. **iOS VoIP push, app killed**: send push (payload above) with the app force-quit, device locked → ring on lock screen → answer → app cold-starts → flushed `onCallAnswered` arrives → media connects within `answerFulfillTimeout`.
+2. **iOS VoIP push, process not running**: terminate the process without user force-quitting the app, lock the device, then send the push → ring on lock screen → answer → app cold-starts → flushed `onCallAnswered` arrives → media connects within `answerFulfillTimeout`. iOS does not deliver remote notifications after the user force-quits from the app switcher until the user launches the app again, so force-quit is not a valid receive-call test.
 3. **iOS decline while killed** → next launch receives flushed `onCallEnded`.
 4. **iOS invalid payload push** → brief "Unknown Caller" flash then ends; app not killed; pushes keep flowing.
 5. **iOS answer-fulfill timeout**: answer but never call `answerAcknowledged` → call fails after 30 s.

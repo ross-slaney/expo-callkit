@@ -6,9 +6,7 @@ extension CallCenter: CXProviderDelegate {
   public func providerDidReset(_ provider: CXProvider) {
     NSLog("[ExpoCallKit] CXProvider reset — failing all calls")
     cancelAllRingTimeouts()
-    Task {
-      await PendingAnswers.shared.abandonAll()
-    }
+    PendingAnswers.shared.abandonAll()
     // Fail every known call so JS state converges; the provider already
     // dropped them, so nothing is reported back.
     while let call = firstCall() {
@@ -47,30 +45,59 @@ extension CallCenter: CXProviderDelegate {
 
     // Deferred fulfillment: hold the system answer action open while JS
     // connects media, resolved by answerAcknowledged/answerFailed or timeout.
-    Task {
-      let (requestId, outcome) = await PendingAnswers.shared.register(
-        callId: id,
-        timeout: CallKitSetup.answerFulfillTimeout
-      )
+    // Registration and emission must happen in this delegate callback. A
+    // deferred Task would leave a window where an end/reset could run first,
+    // after which the Task would create an orphan and emit a stale answer.
+    let (requestId, outcome) = PendingAnswers.shared.register(
+      callId: id,
+      timeout: CallKitSetup.answerFulfillTimeout
+    )
 
-      EventHub.shared.emit(CKEvent.callAnswered, [
-        "callId": id.uuidString.lowercased(),
-        "requestId": requestId.uuidString.lowercased(),
-      ])
+    EventHub.shared.emit(CKEvent.callAnswered, [
+      "callId": id.uuidString.lowercased(),
+      "requestId": requestId.uuidString.lowercased(),
+    ])
 
+    Task { @MainActor in
       switch await outcome.value {
       case .acknowledged:
-        self.mutateCall(id) {
+        guard self.mutateCall(id, {
           $0.status = .connected
           $0.connectedAt = Date()
+        }) != nil else {
+          // The call ended after JS acknowledged but before the action could
+          // be fulfilled. Its teardown path already owns the CallKit action;
+          // do not touch an action that may have timed out in the meantime.
+          return
         }
         action.fulfill()
       case .rejected, .timedOut:
-        // Failing the answer makes CallKit end the call, which arrives as a
-        // CXEndCallAction and runs the normal teardown path.
+        // A CallKit timeout or a separate end action can win after this
+        // outcome resolves but before the main-actor waiter resumes.
+        guard self.call(withId: id) != nil else {
+          return
+        }
+        // Do not rely on a follow-up CXEndCallAction: CallKit does not
+        // guarantee one after a failed answer. End both native state and the
+        // system call deterministically.
         action.fail()
+        self.concludeCall(id, reason: .failed, reportToProvider: true)
+      case .systemTimedOut, .callEnded, .providerReset:
+        // CallKit already timed the action out, ended the call, or reset the
+        // provider. Apple's contract forbids touching an action after timeout.
+        break
       }
     }
+  }
+
+  public func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+    guard let answerAction = action as? CXAnswerCallAction else {
+      return
+    }
+
+    let id = answerAction.callUUID
+    _ = PendingAnswers.shared.systemTimedOut(callId: id)
+    concludeCall(id, reason: .failed, reportToProvider: true)
   }
 
   public func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
