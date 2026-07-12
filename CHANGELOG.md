@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-07-12
+
 - iOS: remove the cold-start acknowledgement race by registering pending
   answers synchronously before their request ids are emitted.
 - iOS: deterministically tear down failed/timed-out answers and handle CallKit's
@@ -16,8 +18,13 @@
   connecting, and connected states.
 - Tests: add native Swift and Kotlin lifecycle suites plus native CI smoke
   builds for Expo SDK 54.
+- Distribution: prepare public npm publishing with explicit package contents,
+  exact peer/engine ranges, protected release gates, and provenance.
+- Example: add a physical-device lifecycle harness and validate the packed
+  tarball in a clean Expo SDK 54 consumer during CI.
 - Docs: clarify the signaling/media ownership contract and correct the APNs
-  expiration, force-quit, Android deadline, and compatibility guidance.
+  expiration, force-quit, Android deadline, compatibility, and release
+  guidance.
 
 ## 0.1.0
 

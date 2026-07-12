@@ -87,6 +87,8 @@ export type CallAnsweredEvent = {
    * Pass to `answerAcknowledged` once your media layer is connected, or to
    * `answerFailed` if connecting failed. On iOS the system answer action is
    * held open until one of the two is called (or the fulfill timeout fires).
+   * Android answers initiated by Telecom system surfaces must resolve inside
+   * the package's 4.5-second callback budget.
    */
   requestId: string;
   meta: EventMeta;

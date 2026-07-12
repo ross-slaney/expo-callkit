@@ -2,14 +2,14 @@
 
 Expo module for native call UX — **CallKit + PushKit** on iOS, **Jetpack core-telecom + CallStyle notifications** on Android.
 
-This module owns the *system* side of calling only:
+This module owns the _system_ side of calling only:
 
 - System incoming/outgoing call UI (full-screen ring, lock screen, notification shade)
 - Call session state (ringing → connecting → connected → ended)
 - Audio-session activation signaling (events only — **no WebRTC dependency**)
 - VoIP push token plumbing (iOS PushKit in-module; Android is bring-your-own-push **by design**)
 
-Call *media* is your app's job (e.g. the Azure Communication Services calling SDK). The module tells you when to connect (`onCallAnswered`) and when audio I/O may start (`onAudioSessionActivated`); you tell it when media is up (`answerAcknowledged`, `reportOutgoingCallConnected`).
+Call _media_ is your app's job (e.g. the Azure Communication Services calling SDK). The module tells you when to connect (`onCallAnswered`) and when audio I/O may start (`onAudioSessionActivated`); you tell it when media is up (`answerAcknowledged`, `reportOutgoingCallConnected`).
 
 > **This package is CallKit/Telecom plumbing, not a phone service or media
 > stack.** Installing it does not provision a phone number, route calls, send
@@ -22,31 +22,33 @@ Requires a **custom dev client / EAS build** — none of this works in Expo Go, 
 
 ### Compatibility
 
-| Surface | Validated baseline | Minimum |
-| --- | --- | --- |
-| Expo / React Native | Expo SDK 54 / React Native 0.81 | Other Expo SDKs are not yet certified in native CI |
-| iOS | Xcode 16.2, Swift 5.9 module mode | iOS 15.1 |
-| Android | compile/target SDK 36, Kotlin 2.1.20 | API 26 (Android 8.0) |
+| Surface             | Validated baseline                   | Minimum                                            |
+| ------------------- | ------------------------------------ | -------------------------------------------------- |
+| Expo / React Native | Expo SDK 54 / React Native 0.81      | Other Expo SDKs are not yet certified in native CI |
+| iOS                 | Xcode 16.2, Swift 5.9 module mode    | iOS 15.1                                           |
+| Android             | compile/target SDK 36, Kotlin 2.1.20 | API 26 (Android 8.0)                               |
+| Build tooling       | Node 20.19.4, npm 10.8.2+            | Declared by `package.json#engines`                 |
 
 The Android AAR enforces API 26. A consuming app configured below 26 fails its
 manifest merge at build time instead of shipping a device-specific
-`CallsManager` crash. The wildcard peer ranges describe package resolution,
-not a compatibility promise; expand this table only after native smoke builds
-are added for another Expo SDK.
+`CallsManager` crash. The encoded peer ranges describe package resolution, not
+a compatibility promise; expand this table only after native smoke builds are
+added for another Expo SDK.
+
+See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the exact peer ranges,
+architecture coverage, and the current native-push, ringtone-asset,
+media-adapter, and physical-device E2E gaps.
 
 ## Installation
 
-The package is published to **GitHub Packages**, which requires authentication even for public packages. Create a classic personal access token with the `read:packages` scope ([github.com/settings/tokens](https://github.com/settings/tokens)), then add to your project's `.npmrc`:
-
-```ini
-@ross-slaney:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
-```
+Public releases install from npm without a GitHub Packages token:
 
 ```sh
-export GITHUB_PACKAGES_TOKEN=ghp_your_token   # or set it in CI secrets
-npx expo install @ross-slaney/expo-callkit
+npx expo install @ross-slaney/expo-callkit expo-build-properties
 ```
+
+Version 0.2.0 is the first release prepared for the public npm registry; 0.1.0
+was GitHub Packages-only.
 
 Add the config plugin (autolinking links native code, but plugins are never auto-applied) and raise the Android minSdk to 26 (required and enforced by `androidx.core:core-telecom`):
 
@@ -55,14 +57,17 @@ Add the config plugin (autolinking links native code, but plugins are never auto
 {
   "expo": {
     "plugins": [
-      ["@ross-slaney/expo-callkit", {
-        "microphonePermissionText": "Genius uses the microphone for calls",
-        "incomingCallTimeout": 45,
-        "answerFulfillTimeout": 30,
-        "outgoingCallTimeout": 60
-        // "ringtone": "ringtone.caf",                       // optional
-        // "androidCallEventReceiver": "com.you.CallEvents"  // optional, see below
-      }],
+      [
+        "@ross-slaney/expo-callkit",
+        {
+          "microphonePermissionText": "Genius uses the microphone for calls",
+          "incomingCallTimeout": 45,
+          "answerFulfillTimeout": 30,
+          "outgoingCallTimeout": 60
+          // "ringtone": "ringtone.caf",                       // optional
+          // "androidCallEventReceiver": "com.you.CallEvents"  // optional, see below
+        }
+      ],
       ["expo-build-properties", { "android": { "minSdkVersion": 26 } }]
     ]
   }
@@ -73,14 +78,14 @@ Then rebuild the native projects: `npx expo prebuild --clean && npx expo run:ios
 
 ### Plugin props
 
-| Prop | Default | Effect |
-| --- | --- | --- |
-| `microphonePermissionText` | "Allow $(PRODUCT_NAME) to access the microphone during calls" | `NSMicrophoneUsageDescription` |
-| `incomingCallTimeout` | `45` (seconds) | Ring time before auto-end as `unanswered` |
-| `answerFulfillTimeout` | `30` (seconds) | Time allowed between `onCallAnswered` and `answerAcknowledged`; Android system-surface callbacks are capped at 4.5 s |
-| `outgoingCallTimeout` | `60` (seconds) | Unconnected outgoing call auto-end |
-| `ringtone` | system default | iOS bundle sound filename / Android `res/raw` resource name |
-| `androidCallEventReceiver` | — | FQCN of an app `BroadcastReceiver` for `dev.rossslaney.expocallkit.CALL_EVENT` |
+| Prop                       | Default                                                       | Effect                                                                                                               |
+| -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `microphonePermissionText` | "Allow $(PRODUCT_NAME) to access the microphone during calls" | `NSMicrophoneUsageDescription`                                                                                       |
+| `incomingCallTimeout`      | `45` (seconds)                                                | Ring time before auto-end as `unanswered`                                                                            |
+| `answerFulfillTimeout`     | `30` (seconds)                                                | Time allowed between `onCallAnswered` and `answerAcknowledged`; Android system-surface callbacks are capped at 4.5 s |
+| `outgoingCallTimeout`      | `60` (seconds)                                                | Unconnected outgoing call auto-end                                                                                   |
+| `ringtone`                 | system default                                                | Name of a sound already bundled in iOS / Android `res/raw`; the plugin does not copy the asset yet                   |
+| `androidCallEventReceiver` | —                                                             | FQCN of an app `BroadcastReceiver` for `dev.rossslaney.expocallkit.CALL_EVENT`                                       |
 
 The plugin also adds `UIBackgroundModes: [voip, audio]`, ensures an `aps-environment` entitlement (development default — release builds get the real value from the provisioning profile), and writes the `ExpoCallKit*` Info.plist keys / Android `meta-data`. An optional 40×40pt template asset named **`CallKitIcon`** in your asset catalog becomes the app icon inside the iOS system call UI.
 
@@ -102,21 +107,24 @@ export function useCallEngine(acs: MyAcsMediaLayer) {
         acs.prefetch(payload.serverCallId, payload.metadata);
       }),
 
-      CallKit.addCallKitListener("onCallAnswered", async ({ callId, requestId }) => {
-        // The user tapped answer. Establish the remote media session first,
-        // but keep audio I/O stopped until onAudioSessionActivated below.
-        // iOS holds the system action open. Android system surfaces (wearable,
-        // Bluetooth, Auto) give the app less than five seconds to finish.
-        try {
-          await acs.join({ startAudio: false });   // signaling/media is connected
-          await CallKit.answerAcknowledged(requestId);
-        } catch {
-          await CallKit.answerFailed(requestId);   // native + system call tear down
+      CallKit.addCallKitListener(
+        "onCallAnswered",
+        async ({ callId, requestId }) => {
+          // The user tapped answer. Establish the remote media session first,
+          // but keep audio I/O stopped until onAudioSessionActivated below.
+          // iOS holds the system action open. Android system surfaces (wearable,
+          // Bluetooth, Auto) give the app less than five seconds to finish.
+          try {
+            await acs.join({ startAudio: false }); // signaling/media is connected
+            await CallKit.answerAcknowledged(requestId);
+          } catch {
+            await CallKit.answerFailed(requestId); // native + system call tear down
+          }
         }
-      }),
+      ),
 
       CallKit.addCallKitListener("onAudioSessionActivated", () => {
-        acs.startAudio();   // do NOT start audio I/O before this event
+        acs.startAudio(); // do NOT start audio I/O before this event
       }),
       CallKit.addCallKitListener("onAudioSessionDeactivated", () => {
         acs.stopAudio();
@@ -158,8 +166,10 @@ await CallKit.reportOutgoingCallConnected(callId);
 PushKit registration happens automatically at app launch (killed-state safety). Read/sync the token:
 
 ```ts
-const token = CallKit.getVoipToken();      // { token, type: "apns-voip" } | null
-CallKit.addCallKitListener("onVoipTokenUpdated", ({ token }) => syncToBackend(token));
+const token = CallKit.getVoipToken(); // { token, type: "apns-voip" } | null
+CallKit.addCallKitListener("onVoipTokenUpdated", ({ token }) =>
+  syncToBackend(token)
+);
 ```
 
 ### VoIP push payload shape (server → APNs)
@@ -194,7 +204,8 @@ This module ships **no FCM service** — your app's existing push layer (expo-no
 
 ```ts
 const callId = await CallKit.reportIncomingCall({
-  eventId: "…", serverCallId: "…",
+  eventId: "…",
+  serverCallId: "…",
   caller: { id: "…", displayName: "Jane Doe" },
   metadata: { bookingId: 42 },
 });
@@ -229,36 +240,36 @@ execution priority only while a valid CallStyle remains posted.
 
 All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`, `ERR_NO_CALL`, `ERR_INVALID_UUID`, `ERR_INVALID_PAYLOAD`, `ERR_INVALID_REASON`, `ERR_CALLKIT_REJECTED`, `ERR_DUPLICATE_EVENT`).
 
-| Function | Returns | Notes |
-| --- | --- | --- |
-| `reportIncomingCall(payload)` | `Promise<callId>` | Ring the system UI. Android entry point for pushes |
-| `startOutgoingCall(recipient, opts?)` | `Promise<callId>` | `opts: { hasVideo?, metadata? }` |
-| `reportOutgoingCallConnected(callId)` | `Promise<void>` | Media established |
-| `answerAcknowledged(requestId)` | `Promise<void>` | Fulfills the held answer action; no-op if timed out |
-| `answerFailed(requestId)` | `Promise<void>` | Fails the answer; OS ends the call |
-| `endCall(callId)` | `Promise<void>` | Local hangup/decline (`reason: "local"`) |
-| `reportCallEnded(callId, reason)` | `Promise<void>` | External end (`remoteEnded`, `answeredElsewhere`, …) |
-| `setMuted(callId, muted)` | `Promise<void>` | Updates system UI state; media mute is your job |
-| `setOnHold(callId, onHold)` | `Promise<void>` | |
-| `getActiveCall()` | `Promise<CallSession \| null>` | |
-| `getVoipToken()` | `VoipToken \| null` (sync) | iOS only; Android always `null` |
-| `registerVoipPushes()` | `void` | Idempotent; automatic at launch. Android no-op |
-| `configureAudioSession()` | `void` | iOS AVAudioSession pre-heat. Android no-op |
-| `requestPermissions()` | `Promise<{ notifications }>` | Android 13+ POST_NOTIFICATIONS; iOS `granted` |
-| `addCallKitListener(name, fn)` | `EventSubscription` | Typed listener helper |
+| Function                              | Returns                        | Notes                                                |
+| ------------------------------------- | ------------------------------ | ---------------------------------------------------- |
+| `reportIncomingCall(payload)`         | `Promise<callId>`              | Ring the system UI. Android entry point for pushes   |
+| `startOutgoingCall(recipient, opts?)` | `Promise<callId>`              | `opts: { hasVideo?, metadata? }`                     |
+| `reportOutgoingCallConnected(callId)` | `Promise<void>`                | Media established                                    |
+| `answerAcknowledged(requestId)`       | `Promise<void>`                | Fulfills the held answer action; no-op if timed out  |
+| `answerFailed(requestId)`             | `Promise<void>`                | Fails the answer; OS ends the call                   |
+| `endCall(callId)`                     | `Promise<void>`                | Local hangup/decline (`reason: "local"`)             |
+| `reportCallEnded(callId, reason)`     | `Promise<void>`                | External end (`remoteEnded`, `answeredElsewhere`, …) |
+| `setMuted(callId, muted)`             | `Promise<void>`                | Updates system UI state; media mute is your job      |
+| `setOnHold(callId, onHold)`           | `Promise<void>`                |                                                      |
+| `getActiveCall()`                     | `Promise<CallSession \| null>` |                                                      |
+| `getVoipToken()`                      | `VoipToken \| null` (sync)     | iOS only; Android always `null`                      |
+| `registerVoipPushes()`                | `void`                         | Idempotent; automatic at launch. Android no-op       |
+| `configureAudioSession()`             | `void`                         | iOS AVAudioSession pre-heat. Android no-op           |
+| `requestPermissions()`                | `Promise<{ notifications }>`   | Android 13+ POST_NOTIFICATIONS; iOS `granted`        |
+| `addCallKitListener(name, fn)`        | `EventSubscription`            | Typed listener helper                                |
 
-| Event | Payload (plus `meta: { flushed, timestamp }`) |
-| --- | --- |
-| `onIncomingCall` | `{ callId, payload: IncomingCallPayload }` |
-| `onCallAnswered` | `{ callId, requestId }` |
-| `onCallEnded` | `{ callId, session: CallSession, reason: CallEndReason }` |
-| `onOutgoingCallStarted` | `{ callId }` |
-| `onMuteChanged` | `{ callId, isMuted }` |
-| `onHoldChanged` | `{ callId, isOnHold }` |
-| `onDtmf` | `{ callId, digits }` (iOS system UI only) |
-| `onAudioSessionActivated` | `{}` — start audio I/O now |
-| `onAudioSessionDeactivated` | `{}` — stop audio I/O |
-| `onVoipTokenUpdated` | `{ token: string \| null, type }` |
+| Event                       | Payload (plus `meta: { flushed, timestamp }`)             |
+| --------------------------- | --------------------------------------------------------- |
+| `onIncomingCall`            | `{ callId, payload: IncomingCallPayload }`                |
+| `onCallAnswered`            | `{ callId, requestId }`                                   |
+| `onCallEnded`               | `{ callId, session: CallSession, reason: CallEndReason }` |
+| `onOutgoingCallStarted`     | `{ callId }`                                              |
+| `onMuteChanged`             | `{ callId, isMuted }`                                     |
+| `onHoldChanged`             | `{ callId, isOnHold }`                                    |
+| `onDtmf`                    | `{ callId, digits }` (iOS system UI only)                 |
+| `onAudioSessionActivated`   | `{}` — start audio I/O now                                |
+| `onAudioSessionDeactivated` | `{}` — stop audio I/O                                     |
+| `onVoipTokenUpdated`        | `{ token: string \| null, type }`                         |
 
 `onIncomingCall`, `onCallAnswered`, `onCallEnded`, `onVoipTokenUpdated` and `onAudioSessionActivated` are buffered natively (latest occurrence) and replayed with `meta.flushed: true` when JS mounts its listener — cold-started answers and killed-state declines are not lost.
 
@@ -294,11 +305,19 @@ npm install        # runs prepare → builds module + plugin
 npm test           # jest (4 platform projects)
 npm run typecheck
 npm run lint
+node scripts/validate-package.mjs
 swift test         # iOS lifecycle state machine
 gradle --project-dir native-tests/android test
 ```
 
-Releases: publish a GitHub release — the `publish.yml` workflow builds, tests and publishes to GitHub Packages.
+The [`example/`](example/) app is a physical-device lifecycle harness with a
+deliberately failing media adapter. CI installs the packed tarball into an Expo
+SDK 54 consumer, typechecks that example, prebuilds Android, and compiles the
+native module.
+
+Releases are gated by an exact `v<package.version>` GitHub release, the protected
+`npm` environment, an `NPM_TOKEN`, package-content validation, a duplicate
+version check, and npm provenance. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 

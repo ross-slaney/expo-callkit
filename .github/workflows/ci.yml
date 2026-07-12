@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: "20.19.4"
       # npm ci runs "prepare" (expo-module prepare), which builds both the
       # module (build/) and the config plugin (plugin/build/).
       - run: npm ci
@@ -23,13 +23,53 @@ jobs:
       - run: npm run lint
         env:
           CI: true
+      - run: npm run verify:package
 
   ios-lifecycle:
-    name: iOS lifecycle tests
+    name: iOS lifecycle tests + SDK 54 smoke build
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.4"
       - run: swift test
+      - run: npm ci
+      - name: Pack the exact public artifact
+        id: ios-pack
+        shell: bash
+        run: |
+          npm pack --pack-destination /tmp --json > /tmp/expo-callkit-ios-pack.json
+          filename="$(node -e "const p=require('/tmp/expo-callkit-ios-pack.json'); process.stdout.write(p[0].filename)")"
+          echo "tarball=/tmp/$filename" >> "$GITHUB_OUTPUT"
+      - run: >-
+          npx create-expo-app@4.0.0 /tmp/expo-callkit-ios-smoke
+          --template expo-template-blank@sdk-54 --yes
+      - name: Install the tarball as a real consumer
+        run: npm install "${{ steps.ios-pack.outputs.tarball }}" expo-build-properties@~1.0.10
+        working-directory: /tmp/expo-callkit-ios-smoke
+      - name: Generate and install the SDK 54 iOS project
+        run: |
+          cp "$GITHUB_WORKSPACE/example/app.json" ./app.json
+          npx expo prebuild --platform ios --no-install
+          cd ios
+          pod install --repo-update
+        working-directory: /tmp/expo-callkit-ios-smoke
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+      - name: Compile the packed module pod
+        run: >-
+          xcodebuild
+          -workspace ExpoCallKitExample.xcworkspace
+          -scheme ExpoCallKit
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build -quiet
+        working-directory: /tmp/expo-callkit-ios-smoke/ios
 
   android-native:
     name: Android native tests + SDK 54 smoke build
@@ -39,20 +79,37 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20.19.4'
+          node-version: "20.19.4"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.14.3'
+          gradle-version: "8.14.3"
       - run: gradle --project-dir native-tests/android test
       - run: npm ci
+      - name: Pack the exact public artifact
+        id: pack
+        shell: bash
+        run: |
+          npm pack --pack-destination /tmp --json > /tmp/expo-callkit-pack.json
+          filename="$(node -e "const p=require('/tmp/expo-callkit-pack.json'); process.stdout.write(p[0].filename)")"
+          echo "tarball=/tmp/$filename" >> "$GITHUB_OUTPUT"
       - run: >-
           npx create-expo-app@4.0.0 /tmp/expo-callkit-smoke
           --template expo-template-blank@sdk-54 --yes
-      - run: npm install "$GITHUB_WORKSPACE"
+      - name: Install the tarball as a real consumer
+        run: |
+          npm install "${{ steps.pack.outputs.tarball }}" expo-build-properties@~1.0.10
+          npm install --save-dev typescript@~5.9.2 @types/react@~19.1.0
+        working-directory: /tmp/expo-callkit-smoke
+      - name: Typecheck the practical example against the packed artifact
+        run: |
+          cp "$GITHUB_WORKSPACE/example/App.tsx" ./App.tsx
+          cp "$GITHUB_WORKSPACE/example/app.json" ./app.json
+          cp "$GITHUB_WORKSPACE/example/tsconfig.json" ./tsconfig.json
+          npx tsc --noEmit
         working-directory: /tmp/expo-callkit-smoke
       - run: npx expo prebuild --platform android --no-install
         working-directory: /tmp/expo-callkit-smoke

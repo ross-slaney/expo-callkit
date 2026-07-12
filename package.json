@@ -1,9 +1,25 @@
 {
   "name": "@ross-slaney/expo-callkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Expo module for native call UX — CallKit + PushKit on iOS, Jetpack core-telecom on Android",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "files": [
+    "android/build.gradle",
+    "android/src/main/",
+    "ios/",
+    "build/",
+    "plugin/build/",
+    "src/ExpoCallKit.types.ts",
+    "src/ExpoCallKitModule.ts",
+    "src/ExpoCallKitModule.web.ts",
+    "src/events.ts",
+    "src/index.ts",
+    "src/payload.ts",
+    "app.plugin.js",
+    "expo-module.config.json",
+    "CHANGELOG.md"
+  ],
   "exports": {
     ".": {
       "types": "./build/index.d.ts",
@@ -19,8 +35,10 @@
     "lint": "expo-module lint",
     "test": "expo-module test",
     "typecheck": "expo-module typecheck",
+    "verify:package": "node scripts/validate-package.mjs",
+    "verify:release": "node scripts/validate-release.mjs",
     "prepare": "expo-module prepare",
-    "prepublishOnly": "expo-module prepublishOnly",
+    "prepublishOnly": "expo-module prepublishOnly && npm run verify:package",
     "expo-module": "expo-module"
   },
   "keywords": [
@@ -33,7 +51,10 @@
     "core-telecom",
     "expo-callkit"
   ],
-  "repository": "https://github.com/ross-slaney/expo-callkit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ross-slaney/expo-callkit.git"
+  },
   "bugs": {
     "url": "https://github.com/ross-slaney/expo-callkit/issues"
   },
@@ -41,7 +62,13 @@
   "license": "MIT",
   "homepage": "https://github.com/ross-slaney/expo-callkit#readme",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=20.19.4",
+    "npm": ">=10.8.2"
   },
   "jest": {
     "preset": "expo-module-scripts"
@@ -56,8 +83,8 @@
     "typescript": "~5.9.2"
   },
   "peerDependencies": {
-    "expo": "*",
-    "react": "*",
-    "react-native": "*"
+    "expo": "^54.0.0",
+    "react": ">=19.1.0 <19.2.0",
+    "react-native": ">=0.81.4 <0.82.0"
   }
 }

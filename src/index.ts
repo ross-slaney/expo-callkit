@@ -75,7 +75,8 @@ export async function reportOutgoingCallConnected(
 /**
  * Completes a pending answer. Call this after `onCallAnswered` once your
  * media layer has joined the call; on iOS this fulfills the held system
- * answer action. A no-op if the request already timed out.
+ * answer action, while Android completes the waiting Telecom callback or app
+ * answer transaction. A no-op if the request already timed out.
  */
 export async function answerAcknowledged(requestId: string): Promise<void> {
   return ExpoCallKitModule.answerAcknowledged(

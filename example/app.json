@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Expo CallKit Example",
+    "slug": "expo-callkit-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "ios": {
+      "bundleIdentifier": "dev.rossslaney.expocallkit.example"
+    },
+    "android": {
+      "package": "dev.rossslaney.expocallkit.example"
+    },
+    "plugins": [
+      [
+        "@ross-slaney/expo-callkit",
+        {
+          "microphonePermissionText": "Allow the example app to use the microphone for calls",
+          "incomingCallTimeout": 45,
+          "answerFulfillTimeout": 30,
+          "outgoingCallTimeout": 60
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
+    ]
+  }
+}
