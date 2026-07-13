@@ -82,11 +82,13 @@ const requiredFiles = [
   "android/src/main/AndroidManifest.xml",
   "android/src/main/java/dev/rossslaney/expocallkit/EventReplayPolicy.kt",
   "android/src/main/java/dev/rossslaney/expocallkit/ExpoCallKitModule.kt",
+  "ios/CallLifecycleCore/CallStatus.swift",
   "ios/CallRegistryCore/SingleCallRegistry.swift",
   "ios/EventCore/EventContract.swift",
   "ios/ExpoCallKit.podspec",
   "ios/ExpoCallKitModule.swift",
   "ios/PendingAnswersCore/PendingAnswers.swift",
+  "ios/PushTokenPersistenceCore/PushTokenPersistence.swift",
   "LICENSE",
   "README.md",
 ];

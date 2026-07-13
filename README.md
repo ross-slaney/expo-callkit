@@ -290,6 +290,11 @@ CallKit.addCallKitListener("onVoipTokenUpdated", ({ token }) =>
 );
 ```
 
+The native cache binds a restored token to the signed build's APNs
+`aps-environment`. Installing a development build over a production build (or
+the reverse) rejects and removes the old token instead of sending it to the
+wrong APNs gateway. The unscoped cache used before this safeguard is discarded.
+
 ### VoIP push payload shapes (server/provider → APNs)
 
 Send to APNs with headers `apns-push-type: voip`, `apns-priority: 10`, `apns-expiration: 0`, `apns-topic: <bundle-id>.voip`. The zero expiration prevents a stale ring from being delivered after the call is already gone. A backend-owned payload wraps the call under a top-level `incomingCall` key:
@@ -320,9 +325,10 @@ duplicate deliveries identify the same system call.
 
 Provider terminal pushes (including Telnyx's `message: "Missed call!"` shape)
 are never presented as a new incoming ring. The module closes a matching stale
-ring and reports an immediately-ended watchdog call to satisfy PushKit's
-report-per-delivery contract. A late terminal push never tears down an already
-connected call.
+ring in either `ringing` or `connecting` state—including while an answer is
+attaching media—and reports an immediately-ended watchdog call to satisfy
+PushKit's report-per-delivery contract. A late terminal push never tears down
+an already connected call.
 
 Every native iOS push event exposes its full JSON-safe body as
 `rawPushPayload` on `onIncomingCall`, `onCallAnswered`, and `onCallEnded`, and
@@ -428,6 +434,9 @@ audio listeners at the app root before accepting a call.
 - **Single-call model**: one call at a time (`maximumCallGroups = 1`). A second incoming call while busy rings out (`unanswered` on the caller's side); no call waiting.
 - **`hasVideo` is cosmetic**: it flavors the system UI ("Video" badge / notification text). Telecom registration is audio-capability only; video media is entirely yours.
 - Android `setMuted` and mute events are bookkeeping around the system UI; your media layer owns the actual microphone.
+- iOS prewarms `playAndRecord` + `voiceChat` and permits Bluetooth HFP, the
+  bidirectional voice-call route. A2DP is intentionally excluded because it is
+  an output profile and can pair headset playback with a different microphone.
 - Android Core-Telecom answer callbacks wait for the existing media acknowledgement contract. Hold/active/disconnect callbacks still emit state for your media layer; this package does not pretend those events prove transport-level mute, resume, or shutdown.
 - `onDtmf` only fires on iOS (CallKit keypad). Android core-telecom has no DTMF callback.
 - iOS "local" ends: user hangups via system UI and failed answers both surface as `reason: "local"` from `CXEndCallAction`.
@@ -447,7 +456,7 @@ Simulators cannot exercise this stack (no PushKit tokens, no CallKit UI). On rea
 9. **Android 13+ permission**: deny POST_NOTIFICATIONS → `requestPermissions()` reports `denied`; ring is silent (document to users).
 10. **Both**: unanswered call auto-ends at `incomingCallTimeout`; outgoing call auto-ends at `outgoingCallTimeout`; mute/hold toggles from system UI emit events.
 11. **Android remote surface**: answer from a paired Bluetooth device, wearable, or Android Auto; media acknowledgement within 4.5 s connects, while rejection/no acknowledgement fails before Core-Telecom's 5 s deadline.
-12. **Both route pickers**: while connected, switch earpiece/speaker, attach and remove a wired or Bluetooth device, and confirm `currentRoute` follows the OS. Repeat a tap as the device disconnects and confirm the request fails without selecting a fabricated fallback.
+12. **Both route pickers**: while connected, switch earpiece/speaker, attach and remove a wired or Bluetooth device, and confirm `currentRoute` follows the OS. On iOS, verify the Bluetooth HFP headset microphone carries speech in both directions (not A2DP output paired with the phone mic). Repeat a tap as the device disconnects and confirm the request fails without selecting a fabricated fallback.
 
 ## Development
 

@@ -19,6 +19,10 @@ let package = Package(
       path: "ios/CallRegistryCore"
     ),
     .target(
+      name: "ExpoCallKitCallLifecycle",
+      path: "ios/CallLifecycleCore"
+    ),
+    .target(
       name: "ExpoCallKitEventPolicy",
       path: "ios/EventCore"
     ),
@@ -30,14 +34,20 @@ let package = Package(
       name: "ExpoCallKitAudioRouteOwnership",
       path: "ios/AudioRouteOwnershipCore"
     ),
+    .target(
+      name: "ExpoCallKitPushTokenPersistence",
+      path: "ios/PushTokenPersistenceCore"
+    ),
     .testTarget(
       name: "ExpoCallKitPendingAnswersTests",
       dependencies: [
         "ExpoCallKitPendingAnswers",
         "ExpoCallKitCallRegistry",
+        "ExpoCallKitCallLifecycle",
         "ExpoCallKitEventPolicy",
         "ExpoCallKitPushPayload",
         "ExpoCallKitAudioRouteOwnership",
+        "ExpoCallKitPushTokenPersistence",
       ],
       path: "native-tests/ios"
     ),

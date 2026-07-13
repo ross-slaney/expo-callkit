@@ -2,17 +2,22 @@
 
 ## Unreleased
 
-- iOS: durably restore the last valid PushKit token across cold launches and
-  build upgrades until Apple explicitly invalidates it, so provider login does
-  not depend on the timing of a repeated token callback.
+- iOS: durably restore the last valid PushKit token across cold launches while
+  binding the cache to the signed build's APNs environment. Development and
+  production tokens can never be restored across environments, and the old
+  unscoped cache is discarded.
 
 - Audio routing: add a typed, provider-neutral current/available route state,
   realtime `onAudioRouteChanged` updates, guarded route selection on iOS and
   Android, and an explicit iOS speaker override. Route mutations are limited to
   the OS-owned active CallKit/Core-Telecom session and fail closed when stale.
 
-- Treat provider missed-call/terminal VoIP pushes as ring dismissal rather
-  than a new incoming call, while preserving Apple's report-per-push contract.
+- Treat provider missed-call/terminal VoIP pushes as dismissal of a matching
+  ringing or connecting call rather than a new incoming call, while preserving
+  Apple's report-per-push contract and protecting already-connected media.
+
+- iOS: keep the call audio policy on bidirectional Bluetooth HFP and exclude
+  output-only A2DP routes from the `voiceChat` session.
 
 - iOS: normalize provider Voice SDK PushKit payloads carrying `metadata.call_id`
   while preserving the existing canonical `incomingCall` envelope.

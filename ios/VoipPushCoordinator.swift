@@ -12,19 +12,34 @@ final class VoipPushCoordinator: NSObject {
   static let shared = VoipPushCoordinator()
 
   private static let dedupeWindow: TimeInterval = 120
-  private static let tokenDefaultsKey = "expo-callkit.pushkit-token.v1"
+  private static let legacyTokenDefaultsKey = "expo-callkit.pushkit-token.v1"
+  private static let tokenDefaultsKey = "expo-callkit.pushkit-token.v2"
 
   private let lock = NSLock()
+  private let apsEnvironment: APNSEnvironment?
   private var registry: PKPushRegistry?
   private var tokenValue: String?
   private var seenEventIds: [String: Date] = [:]
 
   private override init() {
-    // PushKit tokens are stable across launches until Apple invalidates them.
-    // Restore the last native value synchronously so JavaScript can associate
-    // the device with its calling provider even when PKPushRegistry has not
-    // re-delivered didUpdatePushCredentials yet during a cold launch.
-    tokenValue = UserDefaults.standard.string(forKey: Self.tokenDefaultsKey)
+    let defaults = UserDefaults.standard
+    let environment = Self.currentApsEnvironment()
+    let persistedValue = defaults.object(forKey: Self.tokenDefaultsKey)
+    let restoration = PushTokenPersistence.restore(
+      data: persistedValue as? Data,
+      currentEnvironment: environment
+    )
+    apsEnvironment = environment
+    tokenValue = restoration.token
+
+    // v1 stored a bare token, so it could restore a development token into a
+    // production build (or the reverse). It is intentionally not migrated.
+    defaults.removeObject(forKey: Self.legacyTokenDefaultsKey)
+    if (persistedValue != nil && !(persistedValue is Data))
+      || restoration.shouldRemovePersistedValue
+    {
+      defaults.removeObject(forKey: Self.tokenDefaultsKey)
+    }
     super.init()
   }
 
@@ -60,8 +75,10 @@ final class VoipPushCoordinator: NSObject {
     guard changed else {
       return
     }
-    if let newValue {
-      UserDefaults.standard.set(newValue, forKey: Self.tokenDefaultsKey)
+    if let newValue, let apsEnvironment,
+      let data = PushTokenPersistence.encode(token: newValue, environment: apsEnvironment)
+    {
+      UserDefaults.standard.set(data, forKey: Self.tokenDefaultsKey)
     } else {
       UserDefaults.standard.removeObject(forKey: Self.tokenDefaultsKey)
     }
@@ -69,6 +86,27 @@ final class VoipPushCoordinator: NSObject {
       "token": newValue ?? NSNull(),
       "type": "apns-voip",
     ])
+  }
+
+  /// Development/ad-hoc builds carry the signed provisioning profile. Apple
+  /// strips it from App Store/TestFlight installs, whose APNs environment is
+  /// production. If a present profile cannot be read, fail closed instead of
+  /// guessing and restoring a token from the wrong environment.
+  private static func currentApsEnvironment() -> APNSEnvironment? {
+    #if targetEnvironment(simulator)
+    return nil
+    #else
+    guard let profileUrl = Bundle.main.url(
+      forResource: "embedded",
+      withExtension: "mobileprovision"
+    ) else {
+      return .production
+    }
+    guard let profileData = try? Data(contentsOf: profileUrl) else {
+      return nil
+    }
+    return APNSEnvironment.fromProvisioningProfile(profileData)
+    #endif
   }
 
   /// Records `eventId`, returning true when it was already seen within the

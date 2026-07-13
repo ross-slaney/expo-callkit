@@ -36,7 +36,10 @@ final class AudioSessionCoordinator: NSObject {
       try session.setCategory(
         .playAndRecord,
         mode: .voiceChat,
-        options: [.allowBluetooth, .allowBluetoothA2DP]
+        // Keep Bluetooth on the bidirectional HFP voice route. A2DP is an
+        // output profile and may pair headset playback with another input,
+        // which is not a predictable phone-call route.
+        options: [.allowBluetooth]
       )
     } catch {
       NSLog("[ExpoCallKit] Failed to configure AVAudioSession: \(error.localizedDescription)")

@@ -75,13 +75,6 @@ enum CallOrigin: String {
   case outgoing
 }
 
-enum CallStatus: String {
-  case ringing
-  case connecting
-  case connected
-  case ended
-}
-
 enum EndReason: String {
   case failed
   case remoteEnded
