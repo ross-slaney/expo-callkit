@@ -15,6 +15,7 @@ object CKEvents {
     const val DTMF = "onDtmf"
     const val AUDIO_SESSION_ACTIVATED = "onAudioSessionActivated"
     const val AUDIO_SESSION_DEACTIVATED = "onAudioSessionDeactivated"
+    const val AUDIO_ROUTE_CHANGED = "onAudioRouteChanged"
     const val VOIP_TOKEN_UPDATED = "onVoipTokenUpdated"
 
     val ALL = listOf(
@@ -27,6 +28,7 @@ object CKEvents {
         DTMF,
         AUDIO_SESSION_ACTIVATED,
         AUDIO_SESSION_DEACTIVATED,
+        AUDIO_ROUTE_CHANGED,
         VOIP_TOKEN_UPDATED,
     )
 }

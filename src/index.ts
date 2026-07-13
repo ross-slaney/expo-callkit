@@ -5,6 +5,7 @@ import type {
   CallKitPermissions,
   CallParticipant,
   CallSession,
+  AudioRouteState,
   ExpoCallKitEvents,
   IncomingCallPayload,
   OutgoingCallOptions,
@@ -133,6 +134,48 @@ export async function setOnHold(
   onHold: boolean,
 ): Promise<void> {
   return ExpoCallKitModule.setOnHold(assertUuid(callId, "callId"), onHold);
+}
+
+/**
+ * Returns the current OS-owned call audio route and the routes that may be
+ * selected. Capability flags stay false until CallKit/Core-Telecom activates
+ * call audio.
+ */
+export async function getAudioRouteState(): Promise<AudioRouteState> {
+  return ExpoCallKitModule.getAudioRouteState();
+}
+
+/**
+ * Requests one of the opaque route ids returned by `getAudioRouteState` or
+ * `onAudioRouteChanged`. The call id prevents a stale in-call screen from
+ * changing a newer call.
+ */
+export async function selectAudioRoute(
+  callId: string,
+  routeId: string,
+): Promise<void> {
+  if (typeof routeId !== "string" || routeId.trim().length === 0) {
+    throw new CallKitValidationError("routeId must be a non-empty string");
+  }
+  return ExpoCallKitModule.selectAudioRoute(
+    assertUuid(callId, "callId"),
+    routeId,
+  );
+}
+
+/**
+ * Temporarily overrides iOS call output to the built-in speaker. Passing false
+ * clears the override and lets iOS choose its normal route. Android callers
+ * should select the speaker/earpiece endpoint from `availableRoutes` instead.
+ */
+export async function setSpeakerEnabled(
+  callId: string,
+  enabled: boolean,
+): Promise<void> {
+  return ExpoCallKitModule.setSpeakerEnabled(
+    assertUuid(callId, "callId"),
+    enabled,
+  );
 }
 
 /** Returns the current call session, or null when idle. */

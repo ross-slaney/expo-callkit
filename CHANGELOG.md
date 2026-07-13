@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Audio routing: add a typed, provider-neutral current/available route state,
+  realtime `onAudioRouteChanged` updates, guarded route selection on iOS and
+  Android, and an explicit iOS speaker override. Route mutations are limited to
+  the OS-owned active CallKit/Core-Telecom session and fail closed when stale.
+
 - Treat provider missed-call/terminal VoIP pushes as ring dismissal rather
   than a new incoming call, while preserving Apple's report-per-push contract.
 

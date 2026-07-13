@@ -31,8 +31,20 @@ const media = {
   async hangup(_serverCallId: string): Promise<void> {},
 };
 
+const EMPTY_AUDIO_ROUTE_STATE: CallKit.AudioRouteState = {
+  callId: null,
+  isAudioActive: false,
+  currentRoute: null,
+  availableRoutes: [],
+  supportsRouteSelection: false,
+  supportsSpeakerOverride: false,
+};
+
 export default function App() {
   const [events, setEvents] = useState<string[]>([]);
+  const [audioRoute, setAudioRoute] = useState<CallKit.AudioRouteState>(
+    EMPTY_AUDIO_ROUTE_STATE
+  );
   const serverCalls = useRef(new Map<string, string>());
 
   const log = (message: string) => {
@@ -60,21 +72,29 @@ export default function App() {
       log("VoIP token ready");
     }
 
+    void CallKit.getAudioRouteState().then(setAudioRoute).catch((error) =>
+      log(
+        `Audio route query failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    );
+
     const subscriptions = [
       CallKit.addCallKitListener(
         "onIncomingCall",
         ({ callId, payload, rawPushPayload }) => {
-        serverCalls.current.set(callId, payload.serverCallId);
-        void media
-          .prepare(payload.serverCallId, rawPushPayload)
-          .catch((error) =>
-            log(
-              `Media preparation failed: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            )
-          );
-        log(`Incoming: ${payload.caller.displayName ?? payload.caller.id}`);
+          serverCalls.current.set(callId, payload.serverCallId);
+          void media
+            .prepare(payload.serverCallId, rawPushPayload)
+            .catch((error) =>
+              log(
+                `Media preparation failed: ${
+                  error instanceof Error ? error.message : String(error)
+                }`
+              )
+            );
+          log(`Incoming: ${payload.caller.displayName ?? payload.caller.id}`);
         }
       ),
       CallKit.addCallKitListener(
@@ -103,6 +123,12 @@ export default function App() {
       CallKit.addCallKitListener("onAudioSessionDeactivated", () => {
         media.stopAudio();
         log("Audio session deactivated");
+      }),
+      CallKit.addCallKitListener("onAudioRouteChanged", (state) => {
+        setAudioRoute(state);
+        if (state.currentRoute) {
+          log(`Audio route: ${state.currentRoute.name}`);
+        }
       }),
       CallKit.addCallKitListener(
         "onCallEnded",
@@ -154,6 +180,22 @@ export default function App() {
     }
   };
 
+  const chooseAudioRoute = async (route: CallKit.AudioRoute) => {
+    if (!audioRoute.callId || !audioRoute.supportsRouteSelection) {
+      return;
+    }
+    try {
+      await CallKit.selectAudioRoute(audioRoute.callId, route.id);
+    } catch (error) {
+      log(
+        `Route change failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      setAudioRoute(await CallKit.getAudioRouteState());
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -170,6 +212,40 @@ export default function App() {
         >
           <Text style={styles.buttonText}>Simulate incoming call</Text>
         </Pressable>
+
+        <View style={styles.logCard}>
+          <Text style={styles.logTitle}>Call audio</Text>
+          <Text style={styles.logLine}>
+            {audioRoute.isAudioActive
+              ? `Current: ${audioRoute.currentRoute?.name ?? "Unknown"}`
+              : "Waiting for the OS to activate call audio."}
+          </Text>
+          <View style={styles.routeRow}>
+            {audioRoute.availableRoutes.map((route) => {
+              const selected = route.id === audioRoute.currentRoute?.id;
+              return (
+                <Pressable
+                  key={route.id}
+                  disabled={!audioRoute.supportsRouteSelection}
+                  onPress={() => void chooseAudioRoute(route)}
+                  style={[
+                    styles.routeButton,
+                    selected && styles.routeButtonSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.routeButtonText,
+                      selected && styles.routeButtonTextSelected,
+                    ]}
+                  >
+                    {route.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
 
         <View style={styles.logCard}>
           <Text style={styles.logTitle}>Lifecycle events</Text>
@@ -214,4 +290,15 @@ const styles = StyleSheet.create({
   },
   logTitle: { color: "#f8fafc", fontSize: 16, fontWeight: "700" },
   logLine: { color: "#94a3b8", fontSize: 13, lineHeight: 18 },
+  routeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  routeButton: {
+    borderColor: "#334155",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  routeButtonSelected: { backgroundColor: "#dbeafe", borderColor: "#60a5fa" },
+  routeButtonText: { color: "#cbd5e1", fontSize: 13, fontWeight: "600" },
+  routeButtonTextSelected: { color: "#1d4ed8" },
 });

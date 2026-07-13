@@ -5,6 +5,7 @@ import type {
   CallKitPermissions,
   CallParticipant,
   CallSession,
+  AudioRouteState,
   ExpoCallKitEvents,
   IncomingCallPayload,
   OutgoingCallOptions,
@@ -24,6 +25,9 @@ declare class ExpoCallKitNativeModule extends NativeModule<ExpoCallKitEvents> {
   reportCallEnded(callId: string, reason: CallEndReason): Promise<void>;
   setMuted(callId: string, muted: boolean): Promise<void>;
   setOnHold(callId: string, onHold: boolean): Promise<void>;
+  getAudioRouteState(): Promise<AudioRouteState>;
+  selectAudioRoute(callId: string, routeId: string): Promise<void>;
+  setSpeakerEnabled(callId: string, enabled: boolean): Promise<void>;
   getActiveCall(): Promise<CallSession | null>;
   getVoipToken(): VoipToken | null;
   registerVoipPushes(): void;

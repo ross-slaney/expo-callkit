@@ -13,5 +13,6 @@ final class EventReplayPolicyTests: XCTestCase {
   func testAudioLifecycleEventsAreNeverReplayed() {
     XCTAssertNil(EventReplayPolicy.limits[CKEvent.audioSessionActivated])
     XCTAssertNil(EventReplayPolicy.limits[CKEvent.audioSessionDeactivated])
+    XCTAssertNil(EventReplayPolicy.limits[CKEvent.audioRouteChanged])
   }
 }

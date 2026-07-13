@@ -26,6 +26,10 @@ let package = Package(
       name: "ExpoCallKitPushPayload",
       path: "ios/PushPayloadCore"
     ),
+    .target(
+      name: "ExpoCallKitAudioRouteOwnership",
+      path: "ios/AudioRouteOwnershipCore"
+    ),
     .testTarget(
       name: "ExpoCallKitPendingAnswersTests",
       dependencies: [
@@ -33,6 +37,7 @@ let package = Package(
         "ExpoCallKitCallRegistry",
         "ExpoCallKitEventPolicy",
         "ExpoCallKitPushPayload",
+        "ExpoCallKitAudioRouteOwnership",
       ],
       path: "native-tests/ios"
     ),

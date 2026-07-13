@@ -7,6 +7,7 @@ This module owns the _system_ side of calling only:
 - System incoming/outgoing call UI (full-screen ring, lock screen, notification shade)
 - Call session state (ringing → connecting → connected → ended)
 - Audio-session activation signaling (events only — **no WebRTC dependency**)
+- Typed current/available audio routes for a custom in-call route picker
 - VoIP push token plumbing (iOS PushKit in-module; Android is bring-your-own-push **by design**)
 
 Call _media_ is your app's job (e.g. the Azure Communication Services calling SDK). The module tells you when to connect (`onCallAnswered`) and when audio I/O may start (`onAudioSessionActivated`); you tell it when media is up (`answerAcknowledged`, `reportOutgoingCallConnected`).
@@ -163,6 +164,47 @@ The module then fails the pending CallKit answer and deterministically ends its
 native call session.
 
 Remote hangup / answered-on-another-device? Tell the module: `CallKit.reportCallEnded(callId, "remoteEnded")` (or `"answeredElsewhere"`, ...).
+
+### Custom in-call audio route picker
+
+Route state is provider-neutral and owned by the OS. Mount the realtime listener
+at the app root, query once when your in-call screen mounts, and only enable the
+picker when `supportsRouteSelection` is true:
+
+```tsx
+const [routeState, setRouteState] = useState<CallKit.AudioRouteState>();
+
+useEffect(() => {
+  void CallKit.getAudioRouteState().then(setRouteState);
+  const subscription = CallKit.addCallKitListener(
+    "onAudioRouteChanged",
+    setRouteState,
+  );
+  return () => subscription.remove();
+}, []);
+
+async function chooseRoute(route: CallKit.AudioRoute) {
+  if (!routeState?.callId || !routeState.supportsRouteSelection) return;
+  await CallKit.selectAudioRoute(routeState.callId, route.id);
+}
+```
+
+The route ids are opaque and short-lived; never persist them or construct your
+own. On iOS, `availableRoutes` is the exact `AVAudioSession.availableInputs`
+set plus a package-provided speaker choice. Choosing an input uses
+`setPreferredInput`; choosing speaker uses the temporary output override.
+`setSpeakerEnabled(callId, false)` only clears that override and lets iOS choose
+its normal route—it does not promise the receiver when a headset is connected.
+On Android, routes are the exact Core-Telecom endpoints and selection passes the
+matching object back to `requestEndpointChange`; the package never synthesizes
+an endpoint. `supportsSpeakerOverride` is therefore false on Android—choose the
+speaker or earpiece entry with `selectAudioRoute` instead.
+
+Route mutations fail closed before the OS activates call audio, after the call
+changes, or if a device disappears between rendering and tapping. Handle the
+coded error and refresh `getAudioRouteState()` rather than guessing a fallback.
+`onAudioRouteChanged` is deliberately realtime-only; stale route snapshots are
+never replayed after the system deactivates audio.
 
 ### ACS + Telnyx (or any multi-provider app)
 
@@ -335,7 +377,7 @@ execution priority only while a valid CallStyle remains posted.
 
 ## API reference
 
-All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`, `ERR_NO_CALL`, `ERR_INVALID_UUID`, `ERR_INVALID_PAYLOAD`, `ERR_INVALID_REASON`, `ERR_CALLKIT_REJECTED`, `ERR_DUPLICATE_EVENT`).
+All call ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`, `ERR_NO_CALL`, `ERR_INVALID_UUID`, `ERR_INVALID_PAYLOAD`, `ERR_INVALID_REASON`, `ERR_CALLKIT_REJECTED`, `ERR_DUPLICATE_EVENT`, `ERR_AUDIO_INACTIVE`, `ERR_AUDIO_ROUTE_UNAVAILABLE`, `ERR_AUDIO_ROUTE_REJECTED`, `ERR_AUDIO_ROUTE_UNSUPPORTED`).
 
 | Function                              | Returns                        | Notes                                                |
 | ------------------------------------- | ------------------------------ | ---------------------------------------------------- |
@@ -348,6 +390,9 @@ All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`,
 | `reportCallEnded(callId, reason)`     | `Promise<void>`                | External end (`remoteEnded`, `answeredElsewhere`, …) |
 | `setMuted(callId, muted)`             | `Promise<void>`                | Updates system UI state; media mute is your job      |
 | `setOnHold(callId, onHold)`           | `Promise<void>`                |                                                      |
+| `getAudioRouteState()`                | `Promise<AudioRouteState>`     | Read-only; unsupported capabilities are false        |
+| `selectAudioRoute(callId, routeId)`   | `Promise<void>`                | Select an id from the latest available routes         |
+| `setSpeakerEnabled(callId, enabled)`  | `Promise<void>`                | iOS override; Android fails as unsupported            |
 | `getActiveCall()`                     | `Promise<CallSession \| null>` |                                                      |
 | `getVoipToken()`                      | `VoipToken \| null` (sync)     | iOS only; Android always `null`                      |
 | `registerVoipPushes()`                | `void`                         | Idempotent; automatic at launch. Android no-op       |
@@ -367,14 +412,16 @@ All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`,
 | `onDtmf`                    | `{ callId, digits }` (iOS system UI only)                 |
 | `onAudioSessionActivated`   | `{}` — start audio I/O now                                |
 | `onAudioSessionDeactivated` | `{}` — stop audio I/O                                     |
+| `onAudioRouteChanged`       | `AudioRouteState` — current route/capabilities            |
 | `onVoipTokenUpdated`        | `{ token: string \| null, type }`                         |
 
 `onIncomingCall`, `onCallAnswered`, `onCallEnded`, and `onVoipTokenUpdated` are
 buffered natively (latest occurrence) and replayed with `meta.flushed: true`
 when JS mounts its listener — cold-started answers and killed-state declines
-are not lost. Audio activation/deactivation events are realtime-only: replaying
-an old activation after the system deactivated audio could incorrectly restart
-media, so mount both audio listeners at the app root before accepting a call.
+are not lost. Audio activation/deactivation and route-change events are
+realtime-only: replaying old audio state after the system deactivated audio
+could incorrectly restart media or display a disconnected route, so mount the
+audio listeners at the app root before accepting a call.
 
 ## Design notes / limitations
 
@@ -400,6 +447,7 @@ Simulators cannot exercise this stack (no PushKit tokens, no CallKit UI). On rea
 9. **Android 13+ permission**: deny POST_NOTIFICATIONS → `requestPermissions()` reports `denied`; ring is silent (document to users).
 10. **Both**: unanswered call auto-ends at `incomingCallTimeout`; outgoing call auto-ends at `outgoingCallTimeout`; mute/hold toggles from system UI emit events.
 11. **Android remote surface**: answer from a paired Bluetooth device, wearable, or Android Auto; media acknowledgement within 4.5 s connects, while rejection/no acknowledgement fails before Core-Telecom's 5 s deadline.
+12. **Both route pickers**: while connected, switch earpiece/speaker, attach and remove a wired or Bluetooth device, and confirm `currentRoute` follows the OS. Repeat a tap as the device disconnects and confirm the request fails without selecting a fabricated fallback.
 
 ## Development
 

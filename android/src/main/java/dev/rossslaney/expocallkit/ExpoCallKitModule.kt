@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.kotlin.Promise
+import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.UUID
@@ -23,6 +24,7 @@ class ExpoCallKitModule : Module() {
             CKEvents.DTMF,
             CKEvents.AUDIO_SESSION_ACTIVATED,
             CKEvents.AUDIO_SESSION_DEACTIVATED,
+            CKEvents.AUDIO_ROUTE_CHANGED,
             CKEvents.VOIP_TOKEN_UPDATED,
         )
 
@@ -113,6 +115,13 @@ class ExpoCallKitModule : Module() {
             EventHub.stopObserving(CKEvents.AUDIO_SESSION_DEACTIVATED)
         }
 
+        OnStartObserving(CKEvents.AUDIO_ROUTE_CHANGED) {
+            EventHub.startObserving(CKEvents.AUDIO_ROUTE_CHANGED)
+        }
+        OnStopObserving(CKEvents.AUDIO_ROUTE_CHANGED) {
+            EventHub.stopObserving(CKEvents.AUDIO_ROUTE_CHANGED)
+        }
+
         OnStartObserving(CKEvents.VOIP_TOKEN_UPDATED) {
             EventHub.startObserving(CKEvents.VOIP_TOKEN_UPDATED)
         }
@@ -189,6 +198,35 @@ class ExpoCallKitModule : Module() {
 
         Function("configureAudioSession") {
             // No-op on Android; core-telecom owns audio focus.
+        }
+
+        AsyncFunction("getAudioRouteState") {
+            CallEngine.audioRouteState()
+        }
+
+        AsyncFunction("selectAudioRoute") { callId: String, routeId: String, promise: Promise ->
+            val parsedId = try {
+                parseUuid(callId)
+            } catch (error: CodedException) {
+                promise.reject(error)
+                return@AsyncFunction
+            }
+
+            CallEngine.selectAudioRoute(parsedId, routeId) { result ->
+                result.fold(
+                    onSuccess = { promise.resolve() },
+                    onFailure = { error ->
+                        promise.reject(
+                            error as? CodedException
+                                ?: AudioRouteRejectedError(error.message ?: "request failed"),
+                        )
+                    },
+                )
+            }
+        }
+
+        AsyncFunction("setSpeakerEnabled") { callId: String, enabled: Boolean ->
+            CallEngine.setSpeakerEnabled(parseUuid(callId), enabled)
         }
 
         AsyncFunction("requestPermissions") { promise: Promise ->

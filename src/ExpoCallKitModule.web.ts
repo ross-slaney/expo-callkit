@@ -3,6 +3,7 @@ import { NativeModule, registerWebModule } from "expo";
 import type {
   CallKitPermissions,
   CallSession,
+  AudioRouteState,
   ExpoCallKitEvents,
   VoipToken,
 } from "./ExpoCallKit.types";
@@ -45,6 +46,22 @@ class ExpoCallKitWebModule extends NativeModule<ExpoCallKitEvents> {
   }
   setOnHold(): Promise<void> {
     return Promise.reject(unavailable("setOnHold"));
+  }
+  getAudioRouteState(): Promise<AudioRouteState> {
+    return Promise.resolve({
+      callId: null,
+      isAudioActive: false,
+      currentRoute: null,
+      availableRoutes: [],
+      supportsRouteSelection: false,
+      supportsSpeakerOverride: false,
+    });
+  }
+  selectAudioRoute(): Promise<void> {
+    return Promise.reject(unavailable("selectAudioRoute"));
+  }
+  setSpeakerEnabled(): Promise<void> {
+    return Promise.reject(unavailable("setSpeakerEnabled"));
   }
   getActiveCall(): Promise<CallSession | null> {
     return Promise.resolve(null);

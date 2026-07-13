@@ -11,12 +11,13 @@ enum CKEvent {
   static let dtmf = "onDtmf"
   static let audioSessionActivated = "onAudioSessionActivated"
   static let audioSessionDeactivated = "onAudioSessionDeactivated"
+  static let audioRouteChanged = "onAudioRouteChanged"
   static let voipTokenUpdated = "onVoipTokenUpdated"
 
   static let all: [String] = [
     incomingCall, callAnswered, callEnded, outgoingCallStarted,
     muteChanged, holdChanged, dtmf,
-    audioSessionActivated, audioSessionDeactivated, voipTokenUpdated,
+    audioSessionActivated, audioSessionDeactivated, audioRouteChanged, voipTokenUpdated,
   ]
 }
 

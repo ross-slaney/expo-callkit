@@ -266,6 +266,7 @@ final class CallCenter: NSObject {
       $0.status = .connected
       $0.connectedAt = now
     }
+    AudioSessionCoordinator.shared.callConnected(id)
   }
 
   // MARK: - Ending calls
@@ -297,6 +298,10 @@ final class CallCenter: NSObject {
     cancelRingTimeout(for: id)
     PendingAnswers.shared.abandon(callId: id)
 
+    guard call(withId: id) != nil else {
+      return
+    }
+    AudioSessionCoordinator.shared.callEnded(id)
     guard var ended = removeCall(id) else {
       return
     }

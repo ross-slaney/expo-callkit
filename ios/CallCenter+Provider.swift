@@ -78,6 +78,7 @@ extension CallCenter: CXProviderDelegate {
           return
         }
         action.fulfill()
+        AudioSessionCoordinator.shared.callConnected(id)
       case .rejected, .timedOut:
         // A CallKit timeout or a separate end action can win after this
         // outcome resolves but before the main-actor waiter resumes.

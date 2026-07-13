@@ -146,6 +146,44 @@ export type AudioSessionEvent = {
   meta: EventMeta;
 };
 
+/** User-visible audio path for a native call. Route ids are opaque. */
+export type AudioRoute = {
+  /** Opaque native identifier. Pass this value back to `selectAudioRoute`. */
+  id: string;
+  /** OS-provided display name, suitable for a route picker. */
+  name: string;
+  type:
+    | "earpiece"
+    | "speaker"
+    | "bluetooth"
+    | "wiredHeadset"
+    | "carAudio"
+    | "hearingAid"
+    | "streaming"
+    | "unknown";
+};
+
+/**
+ * Current native audio-route state for the package's single active call.
+ * Capability flags are false until the OS-owned call audio session is active.
+ */
+export type AudioRouteState = {
+  /** Active call correlated with this state, or null when no call owns audio. */
+  callId: string | null;
+  isAudioActive: boolean;
+  currentRoute: AudioRoute | null;
+  /** Routes the OS currently allows the app to request. */
+  availableRoutes: AudioRoute[];
+  supportsRouteSelection: boolean;
+  /** iOS output override support. Android uses endpoint selection instead. */
+  supportsSpeakerOverride: boolean;
+};
+
+/** Realtime-only route update. Query `getAudioRouteState` after a cold start. */
+export type AudioRouteChangedEvent = AudioRouteState & {
+  meta: EventMeta;
+};
+
 export type VoipTokenUpdatedEvent = {
   /** Null when the OS invalidated the token. */
   token: string | null;
@@ -163,6 +201,7 @@ export type ExpoCallKitEvents = {
   onDtmf: (event: DtmfEvent) => void;
   onAudioSessionActivated: (event: AudioSessionEvent) => void;
   onAudioSessionDeactivated: (event: AudioSessionEvent) => void;
+  onAudioRouteChanged: (event: AudioRouteChangedEvent) => void;
   onVoipTokenUpdated: (event: VoipTokenUpdatedEvent) => void;
 };
 

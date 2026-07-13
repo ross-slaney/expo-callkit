@@ -67,3 +67,35 @@ internal final class InvalidPayloadException: Exception {
     "Incoming call payload must include eventId, serverCallId and caller.id"
   }
 }
+
+/// Thrown when route mutation is attempted outside CallKit's active audio
+/// session. The module never activates AVAudioSession independently.
+internal final class AudioSessionInactiveException: Exception {
+  override var code: String {
+    "ERR_AUDIO_INACTIVE"
+  }
+
+  override var reason: String {
+    "Call audio is not active; wait for onAudioSessionActivated before changing routes"
+  }
+}
+
+internal final class AudioRouteUnavailableException: GenericException<String> {
+  override var code: String {
+    "ERR_AUDIO_ROUTE_UNAVAILABLE"
+  }
+
+  override var reason: String {
+    "Audio route '\(param)' is no longer available; refresh getAudioRouteState()"
+  }
+}
+
+internal final class AudioRouteRejectedException: GenericException<String> {
+  override var code: String {
+    "ERR_AUDIO_ROUTE_REJECTED"
+  }
+
+  override var reason: String {
+    "The system rejected the audio route change: \(param)"
+  }
+}

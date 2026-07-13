@@ -17,5 +17,6 @@ class EventReplayPolicyTest {
     fun `audio lifecycle events are never replayed`() {
         assertFalse(EventReplayPolicy.limits.containsKey(CKEvents.AUDIO_SESSION_ACTIVATED))
         assertFalse(EventReplayPolicy.limits.containsKey(CKEvents.AUDIO_SESSION_DEACTIVATED))
+        assertFalse(EventReplayPolicy.limits.containsKey(CKEvents.AUDIO_ROUTE_CHANGED))
     }
 }

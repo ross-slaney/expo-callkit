@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.core.telecom.CallAttributesCompat
 import androidx.core.telecom.CallControlResult
 import androidx.core.telecom.CallControlScope
+import androidx.core.telecom.CallEndpointCompat
 import androidx.core.telecom.CallsManager
 import java.time.Instant
 import java.util.UUID
@@ -55,16 +56,28 @@ object CallEngine {
         val result: CompletableDeferred<CallControlResult>,
     )
 
+    private data class EndpointCommand(
+        val endpoint: CallEndpointCompat,
+        val result: CompletableDeferred<CallControlResult>,
+    )
+
     private class Lane {
         val answer = Channel<AnswerCommand>(Channel.BUFFERED)
         val setActive = Channel<Unit>(Channel.CONFLATED)
         val setInactive = Channel<Unit>(Channel.CONFLATED)
         val disconnect = Channel<DisconnectCause>(Channel.CONFLATED)
+        val endpoint = Channel<EndpointCommand>(Channel.BUFFERED)
     }
 
     private class Controller(val lane: Lane) {
         var job: Job? = null
         var ringTimeout: Job? = null
+
+        @Volatile
+        var currentEndpoint: CallEndpointCompat? = null
+
+        @Volatile
+        var availableEndpoints: List<CallEndpointCompat> = emptyList()
     }
 
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -84,8 +97,7 @@ object CallEngine {
     @Volatile
     private var callsManager: CallsManager? = null
 
-    @Volatile
-    private var audioActive = false
+    private val audioOwnership = AudioOwnership()
 
     private var incomingTimeoutMs = 45_000L
     private var answerFulfillTimeoutMs = 30_000L
@@ -377,7 +389,7 @@ object CallEngine {
                 now.toEpochMilli(),
             )
         }
-        activateAudio()
+        activateAudio(id)
         true
     }
 
@@ -420,7 +432,6 @@ object CallEngine {
         )
 
         controller.job = runTelecomSession(id, attributes, controller.lane, onAnswer = { _ -> }) {
-            activateAudio()
             CallNotifications.showOutgoing(app, id, recipient.displayName)
             EventHub.emit(CKEvents.OUTGOING_CALL_STARTED, mapOf("callId" to id.toString()))
             startRingTimeout(id, outgoingTimeoutMs)
@@ -466,7 +477,12 @@ object CallEngine {
      */
     private fun finalize(id: UUID, reason: EndReason, sendDisconnect: Boolean = true) {
         val existing = synchronized(answerLock) {
-            val call = calls.remove(id) ?: return
+            val call = calls[id] ?: return
+            // Clear and announce this call's audio ownership before freeing the
+            // single-call slot. A following call can never receive a delayed
+            // deactivation event from this teardown.
+            deactivateAudio(id)
+            calls.remove(id)
             PendingAnswers.abandonFor(id)
             call
         }
@@ -491,9 +507,6 @@ object CallEngine {
             ),
         )
 
-        if (calls.isEmpty()) {
-            deactivateAudio()
-        }
     }
 
     private fun disconnectCauseFor(reason: EndReason): DisconnectCause = when (reason) {
@@ -571,6 +584,71 @@ object CallEngine {
 
     fun activeSessionMap(): Map<String, Any?>? = calls.values.firstOrNull()?.toSessionMap()
 
+    fun audioRouteState(): Map<String, Any?> = synchronized(answerLock) {
+        val callId = calls.keys.firstOrNull()
+        val controller = callId?.let { controllers[it] }
+        val active = callId != null && audioOwnership.owns(callId) && controller != null
+        val routes = if (active) {
+            controller.availableEndpoints.map(::endpointToMap).distinctBy { it["id"] }
+        } else {
+            emptyList()
+        }
+
+        return mapOf(
+            "callId" to callId?.toString(),
+            "isAudioActive" to active,
+            "currentRoute" to if (active) controller.currentEndpoint?.let(::endpointToMap) else null,
+            "availableRoutes" to routes,
+            "supportsRouteSelection" to (active && routes.isNotEmpty()),
+            // Core-Telecom exposes endpoint selection, not an output override.
+            "supportsSpeakerOverride" to false,
+        )
+    }
+
+    fun selectAudioRoute(
+        callId: UUID,
+        routeId: String,
+        completion: (Result<Unit>) -> Unit,
+    ) {
+        mainScope.launch {
+            completion(runCatching { performAudioRouteSelection(callId, routeId) })
+        }
+    }
+
+    private suspend fun performAudioRouteSelection(callId: UUID, routeId: String) {
+        calls[callId] ?: throw NoSuchCallError(callId.toString())
+        if (!audioOwnership.owns(callId)) {
+            throw AudioSessionInactiveError()
+        }
+        val controller = controllers[callId] ?: throw AudioSessionInactiveError()
+        val endpoint = controller.availableEndpoints.firstOrNull {
+            endpointRouteId(it) == routeId
+        } ?: throw AudioRouteUnavailableError(routeId)
+
+        val result = CompletableDeferred<CallControlResult>()
+        if (controller.lane.endpoint.trySend(EndpointCommand(endpoint, result)).isFailure) {
+            throw AudioRouteRejectedError("the active Telecom session is no longer accepting commands")
+        }
+
+        val outcome = try {
+            withTimeoutOrNull(TELECOM_CALLBACK_BUDGET_MS) { result.await() }
+        } catch (error: Exception) {
+            throw AudioRouteRejectedError(error.message ?: "request failed")
+        } ?: throw AudioRouteRejectedError("request timed out")
+
+        if (outcome is CallControlResult.Error) {
+            throw AudioRouteRejectedError("error code ${outcome.errorCode}")
+        }
+    }
+
+    fun setSpeakerEnabled(callId: UUID, enabled: Boolean) {
+        calls[callId] ?: throw NoSuchCallError(callId.toString())
+        throw AudioRouteUnsupportedError(
+            "Android has no speaker override; select ${if (enabled) "the speaker" else "a non-speaker"} " +
+                "route returned by getAudioRouteState()",
+        )
+    }
+
     // endregion
 
     // region Telecom plumbing
@@ -593,9 +671,18 @@ object CallEngine {
                 val scope: CallControlScope = this
                 launch { pumpLane(id, lane, scope) }
                 launch { scope.isMuted.collect { muted -> applySystemMute(id, muted) } }
-                // Collected to keep the scope alive; endpoint routing is left
-                // to the system UI in this version.
-                launch { scope.currentCallEndpoint.collect {} }
+                launch {
+                    scope.currentCallEndpoint.collect { endpoint ->
+                        controllers[id]?.currentEndpoint = endpoint
+                        emitAudioRouteChanged()
+                    }
+                }
+                launch {
+                    scope.availableEndpoints.collect { endpoints ->
+                        controllers[id]?.availableEndpoints = endpoints.toList()
+                        emitAudioRouteChanged()
+                    }
+                }
                 onReady()
             }
         } catch (_: CancellationException) {
@@ -629,6 +716,11 @@ object CallEngine {
                     if (result is CallControlResult.Error) {
                         Log.e(TAG, "setActive failed for $id (${result.errorCode}); ending call")
                         finalize(id, EndReason.FAILED)
+                    } else {
+                        // Outgoing call audio is not active merely because
+                        // addCall created a scope. Telecom owns activation and
+                        // must accept setActive before media/routes are exposed.
+                        activateAudio(id)
                     }
                 }
                 lane.setInactive.onReceive {
@@ -638,6 +730,14 @@ object CallEngine {
                     }
                 }
                 lane.disconnect.onReceive { cause -> scope.disconnect(cause) }
+                lane.endpoint.onReceive { command ->
+                    try {
+                        command.result.complete(scope.requestEndpointChange(command.endpoint))
+                    } catch (error: Exception) {
+                        command.result.completeExceptionally(error)
+                    }
+                    Unit
+                }
             }
         }
     }
@@ -675,21 +775,51 @@ object CallEngine {
         }
     }
 
-    private fun activateAudio() {
-        if (audioActive) {
-            return
+    private fun activateAudio(id: UUID) = synchronized(answerLock) {
+        if (calls[id] == null) {
+            return@synchronized
         }
-        audioActive = true
+        val change = audioOwnership.activate(id)
+        if (!change.changed) {
+            return@synchronized
+        }
+        if (change.previous != null) {
+            EventHub.emit(CKEvents.AUDIO_SESSION_DEACTIVATED)
+        }
         EventHub.emit(CKEvents.AUDIO_SESSION_ACTIVATED)
+        emitAudioRouteChanged()
     }
 
-    private fun deactivateAudio() {
-        if (!audioActive) {
-            return
+    private fun deactivateAudio(id: UUID) = synchronized(answerLock) {
+        val change = audioOwnership.deactivate(id)
+        if (!change.changed) {
+            return@synchronized
         }
-        audioActive = false
         EventHub.emit(CKEvents.AUDIO_SESSION_DEACTIVATED)
+        EventHub.emit(CKEvents.AUDIO_ROUTE_CHANGED, audioRouteState())
     }
+
+    private fun emitAudioRouteChanged() {
+        if (audioOwnership.current() != null) {
+            EventHub.emit(CKEvents.AUDIO_ROUTE_CHANGED, audioRouteState())
+        }
+    }
+
+    private fun endpointRouteId(endpoint: CallEndpointCompat): String =
+        "android:endpoint:${endpoint.identifier.uuid}"
+
+    private fun endpointToMap(endpoint: CallEndpointCompat): Map<String, Any> = mapOf(
+        "id" to endpointRouteId(endpoint),
+        "name" to endpoint.name.toString(),
+        "type" to when (endpoint.type) {
+            CallEndpointCompat.TYPE_EARPIECE -> "earpiece"
+            CallEndpointCompat.TYPE_SPEAKER -> "speaker"
+            CallEndpointCompat.TYPE_BLUETOOTH -> "bluetooth"
+            CallEndpointCompat.TYPE_WIRED_HEADSET -> "wiredHeadset"
+            CallEndpointCompat.TYPE_STREAMING -> "streaming"
+            else -> "unknown"
+        },
+    )
 
     private fun putCall(call: ActiveCall) {
         calls[call.id] = call

@@ -8,6 +8,9 @@ The `media` adapter in `App.tsx` deliberately rejects `join()`. Replace it with
 your real ACS, WebRTC, or SIP implementation before expecting audio. Keep that
 implementation's audio stopped until `onAudioSessionActivated`; call
 `answerAcknowledged` only after signaling and media have joined successfully.
+The harness also renders the package's typed audio-route state. Route controls
+remain disabled until the OS activates call audio; with a real media adapter,
+use them to verify speaker, receiver, wired, and Bluetooth changes on-device.
 
 ```sh
 npm install

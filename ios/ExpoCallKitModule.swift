@@ -87,6 +87,7 @@ public final class ExpoCallKitModule: Module {
       CKEvent.dtmf,
       CKEvent.audioSessionActivated,
       CKEvent.audioSessionDeactivated,
+      CKEvent.audioRouteChanged,
       CKEvent.voipTokenUpdated
     )
 
@@ -161,6 +162,13 @@ public final class ExpoCallKitModule: Module {
     }
     OnStopObserving(CKEvent.audioSessionDeactivated) {
       EventHub.shared.stopObserving(CKEvent.audioSessionDeactivated)
+    }
+
+    OnStartObserving(CKEvent.audioRouteChanged) {
+      EventHub.shared.startObserving(CKEvent.audioRouteChanged)
+    }
+    OnStopObserving(CKEvent.audioRouteChanged) {
+      EventHub.shared.stopObserving(CKEvent.audioRouteChanged)
     }
 
     OnStartObserving(CKEvent.voipTokenUpdated) {
@@ -239,6 +247,24 @@ public final class ExpoCallKitModule: Module {
 
     Function("configureAudioSession") {
       AudioSessionCoordinator.shared.prewarm()
+    }
+
+    AsyncFunction("getAudioRouteState") { () -> [String: Any] in
+      AudioSessionCoordinator.shared.routeState()
+    }
+
+    AsyncFunction("selectAudioRoute") { (callId: String, routeId: String) in
+      try AudioSessionCoordinator.shared.selectRoute(
+        callId: try Self.parseUuid(callId),
+        routeId: routeId
+      )
+    }
+
+    AsyncFunction("setSpeakerEnabled") { (callId: String, enabled: Bool) in
+      try AudioSessionCoordinator.shared.setSpeakerEnabled(
+        callId: try Self.parseUuid(callId),
+        enabled: enabled
+      )
     }
 
     AsyncFunction("requestPermissions") { () -> [String: String] in
