@@ -51,7 +51,9 @@ struct IncomingCallRecord: Record {
       serverCallId: serverCallId,
       caller: caller.asParticipant(),
       hasVideo: hasVideo,
-      metadata: metadata
+      metadata: metadata,
+      callId: nil,
+      rawPushPayload: nil
     )
   }
 }

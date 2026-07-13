@@ -52,6 +52,8 @@ export type CallSession = {
   recipient?: CallParticipant;
   serverCallId?: string;
   metadata?: Record<string, unknown>;
+  /** Complete JSON-safe PushKit body for a native iOS incoming call. */
+  rawPushPayload?: Record<string, unknown>;
   isMuted: boolean;
   isOnHold: boolean;
   /** ISO 8601 timestamp set once the call reaches "connected". */
@@ -78,6 +80,8 @@ export type EventMeta = {
 export type IncomingCallEvent = {
   callId: string;
   payload: IncomingCallPayload;
+  /** Complete JSON-safe PushKit body. Present for native iOS VoIP pushes. */
+  rawPushPayload?: Record<string, unknown>;
   meta: EventMeta;
 };
 
@@ -91,6 +95,10 @@ export type CallAnsweredEvent = {
    * the package's 4.5-second callback budget.
    */
   requestId: string;
+  /** Canonical incoming payload, included when answering an incoming call. */
+  payload?: IncomingCallPayload;
+  /** Complete JSON-safe PushKit body for reconnecting a media/signaling SDK. */
+  rawPushPayload?: Record<string, unknown>;
   meta: EventMeta;
 };
 
@@ -98,6 +106,8 @@ export type CallEndedEvent = {
   callId: string;
   session: CallSession;
   reason: CallEndReason;
+  /** Complete JSON-safe PushKit body for a native iOS incoming call. */
+  rawPushPayload?: Record<string, unknown>;
   meta: EventMeta;
 };
 

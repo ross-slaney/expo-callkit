@@ -22,12 +22,17 @@ let package = Package(
       name: "ExpoCallKitEventPolicy",
       path: "ios/EventCore"
     ),
+    .target(
+      name: "ExpoCallKitPushPayload",
+      path: "ios/PushPayloadCore"
+    ),
     .testTarget(
       name: "ExpoCallKitPendingAnswersTests",
       dependencies: [
         "ExpoCallKitPendingAnswers",
         "ExpoCallKitCallRegistry",
         "ExpoCallKitEventPolicy",
+        "ExpoCallKitPushPayload",
       ],
       path: "native-tests/ios"
     ),

@@ -102,20 +102,26 @@ export function useCallEngine(acs: MyAcsMediaLayer) {
     // Mount these listeners as early as possible (app root). Replay-safe call
     // state events fired before JS was ready use meta.flushed=true.
     const subs = [
-      CallKit.addCallKitListener("onIncomingCall", ({ callId, payload }) => {
+      CallKit.addCallKitListener("onIncomingCall", ({ callId, payload, rawPushPayload }) => {
         // System UI is already ringing. Prepare your media layer.
-        acs.prefetch(payload.serverCallId, payload.metadata);
+        // Provider SDKs that reconnect from their own push body receive the
+        // complete JSON-safe payload here; never print or persist it.
+        acs.prefetch(payload.serverCallId, payload.metadata, rawPushPayload);
       }),
 
       CallKit.addCallKitListener(
         "onCallAnswered",
-        async ({ callId, requestId }) => {
+        async ({ callId, requestId, payload, rawPushPayload }) => {
           // The user tapped answer. Establish the remote media session first,
           // but keep audio I/O stopped until onAudioSessionActivated below.
           // iOS holds the system action open. Android system surfaces (wearable,
           // Bluetooth, Auto) give the app less than five seconds to finish.
           try {
-            await acs.join({ startAudio: false }); // signaling/media is connected
+            await acs.join({
+              serverCallId: payload?.serverCallId,
+              rawPushPayload,
+              startAudio: false,
+            }); // signaling/media is connected
             await CallKit.answerAcknowledged(requestId);
           } catch {
             await CallKit.answerFailed(requestId); // native + system call tear down
@@ -130,8 +136,11 @@ export function useCallEngine(acs: MyAcsMediaLayer) {
         acs.stopAudio();
       }),
 
-      CallKit.addCallKitListener("onCallEnded", ({ session, reason }) => {
-        acs.hangup(session.serverCallId, reason);
+      CallKit.addCallKitListener("onCallEnded", ({ session, reason, rawPushPayload }) => {
+        // rawPushPayload is also preserved on session.rawPushPayload. This is
+        // essential when a killed-state decline must reconnect provider
+        // signaling before sending its reject/end action.
+        acs.hangup(session.serverCallId, reason, rawPushPayload);
         // reason: "local" = this user ended/declined; "remoteEnded",
         // "unanswered", "answeredElsewhere", "declinedElsewhere", "failed", ...
       }),
@@ -172,9 +181,9 @@ CallKit.addCallKitListener("onVoipTokenUpdated", ({ token }) =>
 );
 ```
 
-### VoIP push payload shape (server → APNs)
+### VoIP push payload shapes (server/provider → APNs)
 
-Send to APNs with headers `apns-push-type: voip`, `apns-priority: 10`, `apns-expiration: 0`, `apns-topic: <bundle-id>.voip`. The zero expiration prevents a stale ring from being delivered after the call is already gone. The body must wrap the call under a top-level `incomingCall` key:
+Send to APNs with headers `apns-push-type: voip`, `apns-priority: 10`, `apns-expiration: 0`, `apns-topic: <bundle-id>.voip`. The zero expiration prevents a stale ring from being delivered after the call is already gone. A backend-owned payload wraps the call under a top-level `incomingCall` key:
 
 ```json
 {
@@ -191,6 +200,20 @@ Send to APNs with headers `apns-push-type: voip`, `apns-priority: 10`, `apns-exp
   }
 }
 ```
+
+Provider-owned Voice SDK pushes using a top-level `metadata` object are also
+normalized natively when they include `call_id`. The commonly used
+`caller_name`, `caller_number`, `event_id`, and `has_video` fields populate the
+same `IncomingCallPayload`; unknown metadata is preserved. A UUID `call_id`
+becomes the CallKit UUID, while opaque ids receive a deterministic UUID so
+duplicate deliveries identify the same system call.
+
+Every native iOS push event exposes its full JSON-safe body as
+`rawPushPayload` on `onIncomingCall`, `onCallAnswered`, and `onCallEnded`, and
+on the terminal `CallSession`. State events retain it in the native replay
+buffer, so an app cold-started by answer or decline can give the exact body to
+its media SDK. Treat it as sensitive signaling material: pass it directly to
+the SDK, never log it, persist it, or send it to analytics.
 
 Rules enforced natively (Apple requires a CallKit report per VoIP push — apps that skip it get killed and eventually lose push delivery):
 
@@ -260,9 +283,9 @@ All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`,
 
 | Event                       | Payload (plus `meta: { flushed, timestamp }`)             |
 | --------------------------- | --------------------------------------------------------- |
-| `onIncomingCall`            | `{ callId, payload: IncomingCallPayload }`                |
-| `onCallAnswered`            | `{ callId, requestId }`                                   |
-| `onCallEnded`               | `{ callId, session: CallSession, reason: CallEndReason }` |
+| `onIncomingCall`            | `{ callId, payload, rawPushPayload? }`                    |
+| `onCallAnswered`            | `{ callId, requestId, payload?, rawPushPayload? }`        |
+| `onCallEnded`               | `{ callId, session, reason, rawPushPayload? }`            |
 | `onOutgoingCallStarted`     | `{ callId }`                                              |
 | `onMuteChanged`             | `{ callId, isMuted }`                                     |
 | `onHoldChanged`             | `{ callId, isOnHold }`                                    |

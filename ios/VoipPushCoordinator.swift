@@ -112,7 +112,7 @@ extension VoipPushCoordinator: PKPushRegistryDelegate {
     }
 
     guard let ring = RingPayload.fromPushEnvelope(payload.dictionaryPayload) else {
-      NSLog("[ExpoCallKit] VoIP push payload missing/invalid 'incomingCall' envelope")
+      NSLog("[ExpoCallKit] VoIP push payload could not be normalized")
       CallCenter.shared.reportDiscardedPush(
         callerName: nil,
         reason: .failed,
@@ -122,7 +122,7 @@ extension VoipPushCoordinator: PKPushRegistryDelegate {
     }
 
     guard !isDuplicate(eventId: ring.eventId) else {
-      NSLog("[ExpoCallKit] Duplicate VoIP push dropped (eventId: \(ring.eventId))")
+      NSLog("[ExpoCallKit] Duplicate VoIP push dropped")
       CallCenter.shared.reportDiscardedPush(
         callerName: ring.caller.displayName,
         reason: .failed,

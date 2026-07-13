@@ -114,6 +114,7 @@ struct ActiveCall {
   let serverCallId: String?
   let metadata: [String: Any]?
   let hasVideo: Bool
+  let incomingPayload: RingPayload?
   var isMuted: Bool = false
   var isOnHold: Bool = false
   var connectedAt: Date?
@@ -141,6 +142,9 @@ struct ActiveCall {
     }
     if let serverCallId { dict["serverCallId"] = serverCallId }
     if let metadata { dict["metadata"] = metadata }
+    if let rawPushPayload = incomingPayload?.rawPushPayload {
+      dict["rawPushPayload"] = rawPushPayload
+    }
     if let connectedAt {
       dict["connectedAt"] = Self.timestampFormatter.string(from: connectedAt)
     }
@@ -157,6 +161,8 @@ struct RingPayload {
   let caller: Participant
   let hasVideo: Bool
   let metadata: [String: Any]?
+  let callId: UUID?
+  let rawPushPayload: [String: Any]?
 
   func asDictionary() -> [String: Any] {
     var dict: [String: Any] = [
@@ -169,13 +175,27 @@ struct RingPayload {
     return dict
   }
 
-  /// Extracts a payload from a VoIP push envelope. The push body must carry
-  /// the call description under the top-level key `"incomingCall"`.
+  /// Extracts a provider push into the package's canonical incoming-call
+  /// contract. The original JSON-safe body is retained for the consumer's
+  /// signaling/media adapter and is never logged by this module.
   static func fromPushEnvelope(_ envelope: [AnyHashable: Any]) -> RingPayload? {
-    guard let inner = envelope["incomingCall"] as? [AnyHashable: Any] else {
+    guard let normalized = PushPayloadNormalizer.normalize(envelope) else {
       return nil
     }
-    return fromFields(inner)
+    return RingPayload(
+      eventId: normalized.eventId,
+      serverCallId: normalized.serverCallId,
+      caller: Participant(
+        id: normalized.callerId,
+        displayName: normalized.callerName,
+        phoneNumber: normalized.callerNumber,
+        email: normalized.callerEmail
+      ),
+      hasVideo: normalized.hasVideo,
+      metadata: normalized.metadata,
+      callId: normalized.callId,
+      rawPushPayload: normalized.rawPayload
+    )
   }
 
   /// Validates raw fields. Requires non-empty `eventId`, `serverCallId`, and
@@ -200,7 +220,9 @@ struct RingPayload {
         email: nonEmptyString(callerFields["email"])
       ),
       hasVideo: fields["hasVideo"] as? Bool ?? false,
-      metadata: fields["metadata"] as? [String: Any]
+      metadata: fields["metadata"] as? [String: Any],
+      callId: nil,
+      rawPushPayload: nil
     )
   }
 

@@ -16,8 +16,14 @@ import {
  * is connected.
  */
 const media = {
-  async prepare(_serverCallId: string): Promise<void> {},
-  async join(_serverCallId: string): Promise<void> {
+  async prepare(
+    _serverCallId: string,
+    _rawPushPayload?: Record<string, unknown>
+  ): Promise<void> {},
+  async join(
+    _serverCallId: string,
+    _rawPushPayload?: Record<string, unknown>
+  ): Promise<void> {
     throw new Error("Connect a real media adapter before acknowledging calls");
   },
   startAudio(): void {},
@@ -51,14 +57,16 @@ export default function App() {
 
     const existingToken = CallKit.getVoipToken();
     if (existingToken) {
-      log(`VoIP token ready: ${existingToken.token.slice(0, 12)}…`);
+      log("VoIP token ready");
     }
 
     const subscriptions = [
-      CallKit.addCallKitListener("onIncomingCall", ({ callId, payload }) => {
+      CallKit.addCallKitListener(
+        "onIncomingCall",
+        ({ callId, payload, rawPushPayload }) => {
         serverCalls.current.set(callId, payload.serverCallId);
         void media
-          .prepare(payload.serverCallId)
+          .prepare(payload.serverCallId, rawPushPayload)
           .catch((error) =>
             log(
               `Media preparation failed: ${
@@ -67,16 +75,17 @@ export default function App() {
             )
           );
         log(`Incoming: ${payload.caller.displayName ?? payload.caller.id}`);
-      }),
+        }
+      ),
       CallKit.addCallKitListener(
         "onCallAnswered",
-        async ({ callId, requestId }) => {
+        async ({ callId, requestId, rawPushPayload }) => {
           const serverCallId = serverCalls.current.get(callId);
           try {
             if (!serverCallId) {
               throw new Error("No server call mapping was received");
             }
-            await media.join(serverCallId);
+            await media.join(serverCallId, rawPushPayload);
             await CallKit.answerAcknowledged(requestId);
             log("Media ready; native answer acknowledged");
           } catch (error) {
@@ -116,11 +125,7 @@ export default function App() {
         }
       ),
       CallKit.addCallKitListener("onVoipTokenUpdated", ({ token }) => {
-        log(
-          token
-            ? `VoIP token ready: ${token.slice(0, 12)}…`
-            : "VoIP token invalidated"
-        );
+        log(token ? "VoIP token ready" : "VoIP token invalidated");
       }),
     ];
 

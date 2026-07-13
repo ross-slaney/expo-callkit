@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- iOS: normalize provider Voice SDK PushKit payloads carrying `metadata.call_id`
+  while preserving the existing canonical `incomingCall` envelope.
+- Events: replay the full JSON-safe native push body through incoming, answer,
+  and ended events (and terminal call sessions) for cold-start media/reject
+  handoff without logging signaling payloads or device tokens.
+- iOS: derive a stable CallKit UUID from the provider call id so re-delivered
+  pushes cannot create unrelated system-call identities.
+
 ## 0.2.0 - 2026-07-12
 
 - iOS: remove the cold-start acknowledgement race by registering pending

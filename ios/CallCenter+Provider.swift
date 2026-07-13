@@ -34,7 +34,7 @@ extension CallCenter: CXProviderDelegate {
 
   public func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
     let id = action.callUUID
-    guard call(withId: id) != nil else {
+    guard let currentCall = call(withId: id) else {
       action.fail()
       return
     }
@@ -53,10 +53,17 @@ extension CallCenter: CXProviderDelegate {
       timeout: CallKitSetup.answerFulfillTimeout
     )
 
-    EventHub.shared.emit(CKEvent.callAnswered, [
+    var event: [String: Any] = [
       "callId": id.uuidString.lowercased(),
       "requestId": requestId.uuidString.lowercased(),
-    ])
+    ]
+    if let payload = currentCall.incomingPayload {
+      event["payload"] = payload.asDictionary()
+      if let rawPushPayload = payload.rawPushPayload {
+        event["rawPushPayload"] = rawPushPayload
+      }
+    }
+    EventHub.shared.emit(CKEvent.callAnswered, event)
 
     Task { @MainActor in
       switch await outcome.value {

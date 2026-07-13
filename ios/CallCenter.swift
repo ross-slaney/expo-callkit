@@ -105,13 +105,14 @@ final class CallCenter: NSObject {
 
   private func makeIncomingCall(_ payload: RingPayload) -> ActiveCall {
     ActiveCall(
-      id: UUID(),
+      id: payload.callId ?? UUID(),
       origin: .incoming,
       status: .ringing,
       remoteParty: payload.caller,
       serverCallId: payload.serverCallId,
       metadata: payload.metadata,
-      hasVideo: payload.hasVideo
+      hasVideo: payload.hasVideo,
+      incomingPayload: payload
     )
   }
 
@@ -160,10 +161,14 @@ final class CallCenter: NSObject {
         return
       }
 
-      EventHub.shared.emit(CKEvent.incomingCall, [
+      var event: [String: Any] = [
         "callId": id.uuidString.lowercased(),
         "payload": payload.asDictionary(),
-      ])
+      ]
+      if let rawPushPayload = payload.rawPushPayload {
+        event["rawPushPayload"] = rawPushPayload
+      }
+      EventHub.shared.emit(CKEvent.incomingCall, event)
 
       self.scheduleRingTimeout(for: id, seconds: CallKitSetup.incomingTimeout)
       completion(.success(id))
@@ -204,7 +209,8 @@ final class CallCenter: NSObject {
       remoteParty: recipient,
       serverCallId: nil,
       metadata: metadata,
-      hasVideo: hasVideo
+      hasVideo: hasVideo,
+      incomingPayload: nil
     )
     guard reserveIfIdle(call) else {
       throw CallExistsException()
@@ -278,11 +284,15 @@ final class CallCenter: NSObject {
       provider.reportCall(with: id, endedAt: nil, reason: reason.cxReason)
     }
 
-    EventHub.shared.emit(CKEvent.callEnded, [
+    var event: [String: Any] = [
       "callId": id.uuidString.lowercased(),
       "session": ended.asSessionDictionary(),
       "reason": reason.rawValue,
-    ])
+    ]
+    if let rawPushPayload = ended.incomingPayload?.rawPushPayload {
+      event["rawPushPayload"] = rawPushPayload
+    }
+    EventHub.shared.emit(CKEvent.callEnded, event)
   }
 
   // MARK: - Mute / hold
