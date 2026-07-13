@@ -302,6 +302,54 @@ describe("CallProviderRouter", () => {
     expect(fail).not.toHaveBeenCalled();
   });
 
+  it("does not start delayed provider work after a buffered native end", async () => {
+    const telnyx = adapter("telnyx");
+    const acknowledge = jest.fn(async () => {});
+    const fail = jest.fn(async () => {});
+    const router = new CallProviderRouter([telnyx]);
+
+    router.onIncoming(incoming());
+    const answer = router.onAnswered(answered(), { acknowledge, fail });
+    router.onEnded(ended());
+    await answer;
+    await flush();
+
+    expect(telnyx.endCall).toHaveBeenCalledTimes(1);
+    expect(telnyx.prepareIncoming).not.toHaveBeenCalled();
+    expect(telnyx.answerIncoming).not.toHaveBeenCalled();
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  it("does not answer when native end wins during provider preparation", async () => {
+    let finishPreparation: (() => void) | undefined;
+    const telnyx = adapter("telnyx");
+    telnyx.prepareIncoming.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishPreparation = resolve;
+        }),
+    );
+    const acknowledge = jest.fn(async () => {});
+    const fail = jest.fn(async () => {});
+    const router = new CallProviderRouter([telnyx]);
+
+    router.onIncoming(incoming());
+    await flush();
+    expect(finishPreparation).toBeDefined();
+    const answer = router.onAnswered(answered(), { acknowledge, fail });
+    router.onEnded(ended());
+    finishPreparation!();
+    await answer;
+    await flush();
+
+    expect(telnyx.prepareIncoming).toHaveBeenCalledTimes(1);
+    expect(telnyx.endCall).toHaveBeenCalledTimes(1);
+    expect(telnyx.answerIncoming).not.toHaveBeenCalled();
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
   it("joins provider media once when an answer event is replayed", async () => {
     const telnyx = adapter("telnyx");
     const acknowledge = jest.fn(async () => {});

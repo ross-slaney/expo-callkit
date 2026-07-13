@@ -139,6 +139,7 @@ export class CallProviderRouter {
   }
 
   onIncoming = (event: IncomingCallEvent): void => {
+    const lifecycleToken = this.lifecycleToken(event.callId);
     const context = this.mergeContext(event.callId, {
       callId: event.callId,
       provider: event.payload.provider,
@@ -152,7 +153,11 @@ export class CallProviderRouter {
       if (!adapter.prepareIncoming || this.preparationByCall.has(event.callId))
         return;
       const preparation = Promise.resolve()
-        .then(() => adapter.prepareIncoming!(context))
+        .then(() => {
+          if (!this.ownsLifecycle(event.callId, lifecycleToken, adapter))
+            return;
+          return adapter.prepareIncoming!(context);
+        })
         .catch((error) => {
           this.notify(error, "prepare", context, adapter);
           throw error;
@@ -185,6 +190,8 @@ export class CallProviderRouter {
         answer = (async () => {
           const preparation = this.preparationByCall.get(event.callId);
           if (preparation) await preparation;
+          if (!this.ownsLifecycle(event.callId, lifecycleToken, adapter!))
+            return;
           await adapter!.answerIncoming(context);
         })();
         this.answerByCall.set(event.callId, answer);
@@ -195,16 +202,15 @@ export class CallProviderRouter {
       // Never acknowledge or resurrect a call after its native lifecycle has
       // already ended. Keeping the shared answer promise also prevents a
       // replayed answer event from joining provider media twice.
-      if (
-        this.lifecycleTokenByCall.get(event.callId) !== lifecycleToken ||
-        this.adapterByCall.get(event.callId) !== adapter
-      ) {
+      if (!this.ownsLifecycle(event.callId, lifecycleToken, adapter)) {
         return;
       }
       this.activeCallId = event.callId;
       await bridge.acknowledge(event.requestId);
     } catch (error) {
       this.notify(error, adapter ? "answer" : "select", context, adapter);
+      if (adapter && !this.ownsLifecycle(event.callId, lifecycleToken, adapter))
+        return;
       try {
         await bridge.fail(event.requestId);
       } catch (failure) {
@@ -315,6 +321,17 @@ export class CallProviderRouter {
       this.lifecycleTokenByCall.set(callId, token);
     }
     return token;
+  }
+
+  private ownsLifecycle(
+    callId: string,
+    lifecycleToken: object,
+    adapter: CallProviderAdapter,
+  ): boolean {
+    return (
+      this.lifecycleTokenByCall.get(callId) === lifecycleToken &&
+      this.adapterByCall.get(callId) === adapter
+    );
   }
 
   private mergeContext(
