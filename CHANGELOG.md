@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Treat provider missed-call/terminal VoIP pushes as ring dismissal rather
+  than a new incoming call, while preserving Apple's report-per-push contract.
+
 - iOS: normalize provider Voice SDK PushKit payloads carrying `metadata.call_id`
   while preserving the existing canonical `incomingCall` envelope.
 - Events: replay the full JSON-safe native push body through incoming, answer,

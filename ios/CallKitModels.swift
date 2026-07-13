@@ -163,6 +163,7 @@ struct RingPayload {
   let metadata: [String: Any]?
   let callId: UUID?
   let rawPushPayload: [String: Any]?
+  let isTerminalPush: Bool
 
   func asDictionary() -> [String: Any] {
     var dict: [String: Any] = [
@@ -194,7 +195,8 @@ struct RingPayload {
       hasVideo: normalized.hasVideo,
       metadata: normalized.metadata,
       callId: normalized.callId,
-      rawPushPayload: normalized.rawPayload
+      rawPushPayload: normalized.rawPayload,
+      isTerminalPush: normalized.isTerminal
     )
   }
 
@@ -222,7 +224,8 @@ struct RingPayload {
       hasVideo: fields["hasVideo"] as? Bool ?? false,
       metadata: fields["metadata"] as? [String: Any],
       callId: nil,
-      rawPushPayload: nil
+      rawPushPayload: nil,
+      isTerminalPush: false
     )
   }
 

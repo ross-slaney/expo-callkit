@@ -17,6 +17,9 @@ struct NormalizedPushRing {
   let metadata: [String: Any]?
   let callId: UUID?
   let rawPayload: [String: Any]
+  /// True when the provider is closing a stale ring (for example Telnyx's
+  /// `message: "Missed call!"` VoIP push), not announcing a new call.
+  let isTerminal: Bool
 }
 
 enum PushPayloadNormalizer {
@@ -59,7 +62,8 @@ enum PushPayloadNormalizer {
       hasVideo: fields["hasVideo"] as? Bool ?? false,
       metadata: dictionary(fields["metadata"]).map(jsonSafeDictionary),
       callId: uuid(for: serverCallId),
-      rawPayload: rawPayload
+      rawPayload: rawPayload,
+      isTerminal: false
     )
   }
 
@@ -86,8 +90,55 @@ enum PushPayloadNormalizer {
       hasVideo: metadata["has_video"] as? Bool ?? metadata["hasVideo"] as? Bool ?? false,
       metadata: jsonSafeDictionary(metadata),
       callId: uuid(for: callId),
-      rawPayload: rawPayload
+      rawPayload: rawPayload,
+      isTerminal: isMissedCallPayload(rawPayload)
     )
+  }
+
+  /// Provider-owned VoIP systems use a second push to close a stale ring when
+  /// the caller hangs up or the dial times out. Keep this deliberately scoped
+  /// to the provider `metadata` envelope; canonical app payloads may use words
+  /// such as "missed" in their own opaque metadata without changing meaning.
+  private static func isMissedCallPayload(_ payload: [String: Any]) -> Bool {
+    let markerKeys: Set<String> = [
+      "is_missed_call", "message", "missed", "missed_call",
+      "notification_type", "push_type", "type",
+    ]
+    let affirmativeValues: Set<String> = ["1", "missed", "missed call", "true", "yes"]
+
+    func normalizedKey(_ value: String) -> String {
+      value.lowercased()
+        .replacingOccurrences(of: "-", with: "_")
+        .replacingOccurrences(of: " ", with: "_")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func normalizedValue(_ value: String) -> String {
+      value.lowercased()
+        .replacingOccurrences(of: "_", with: " ")
+        .replacingOccurrences(of: "-", with: " ")
+        .replacingOccurrences(of: "!", with: "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func containsMarker(_ value: Any, key: String? = nil) -> Bool {
+      if let key, markerKeys.contains(normalizedKey(key)) {
+        if let boolean = value as? Bool { return boolean }
+        if let string = value as? String {
+          return affirmativeValues.contains(normalizedValue(string))
+        }
+        if let number = value as? NSNumber { return number.boolValue }
+      }
+      if let dictionary = value as? [String: Any] {
+        return dictionary.contains { containsMarker($0.value, key: $0.key) }
+      }
+      if let array = value as? [Any] {
+        return array.contains { containsMarker($0) }
+      }
+      return false
+    }
+
+    return containsMarker(payload)
   }
 
   /// A provider call id is normally already a UUID. The deterministic fallback

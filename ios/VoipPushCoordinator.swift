@@ -121,6 +121,19 @@ extension VoipPushCoordinator: PKPushRegistryDelegate {
       return
     }
 
+    // Some providers deliver a terminal VoIP push after the caller hangs up
+    // or the dial times out. It is not a second incoming call. Close a stale
+    // deterministic ring if one still exists, then perform the report-and-end
+    // watchdog required for every PushKit delivery.
+    if ring.isTerminalPush {
+      CallCenter.shared.handleTerminalPush(
+        callId: ring.callId,
+        callerName: ring.caller.displayName,
+        completion: completion
+      )
+      return
+    }
+
     guard !isDuplicate(eventId: ring.eventId) else {
       NSLog("[ExpoCallKit] Duplicate VoIP push dropped")
       CallCenter.shared.reportDiscardedPush(

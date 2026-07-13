@@ -194,6 +194,26 @@ final class CallCenter: NSObject {
     }
   }
 
+  /// Handles a provider terminal/missed-call VoIP push without presenting a
+  /// new ring. A still-ringing call with the same stable UUID is ended; an
+  /// already-connected call is left alone because a late terminal push must
+  /// never tear down live media. A short-lived watchdog call still satisfies
+  /// Apple's report-per-PushKit-delivery requirement.
+  func handleTerminalPush(
+    callId: UUID?,
+    callerName: String?,
+    completion: @escaping () -> Void
+  ) {
+    if let callId, let existing = call(withId: callId), existing.status == .ringing {
+      concludeCall(callId, reason: .unanswered, reportToProvider: true)
+    }
+    reportDiscardedPush(
+      callerName: callerName,
+      reason: .remoteEnded,
+      completion: completion
+    )
+  }
+
   // MARK: - Outgoing calls
 
   func startOutgoingCall(

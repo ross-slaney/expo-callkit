@@ -53,7 +53,8 @@ struct IncomingCallRecord: Record {
       hasVideo: hasVideo,
       metadata: metadata,
       callId: nil,
-      rawPushPayload: nil
+      rawPushPayload: nil,
+      isTerminalPush: false
     )
   }
 }

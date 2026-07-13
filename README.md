@@ -208,6 +208,12 @@ same `IncomingCallPayload`; unknown metadata is preserved. A UUID `call_id`
 becomes the CallKit UUID, while opaque ids receive a deterministic UUID so
 duplicate deliveries identify the same system call.
 
+Provider terminal pushes (including Telnyx's `message: "Missed call!"` shape)
+are never presented as a new incoming ring. The module closes a matching stale
+ring and reports an immediately-ended watchdog call to satisfy PushKit's
+report-per-delivery contract. A late terminal push never tears down an already
+connected call.
+
 Every native iOS push event exposes its full JSON-safe body as
 `rawPushPayload` on `onIncomingCall`, `onCallAnswered`, and `onCallEnded`, and
 on the terminal `CallSession`. State events retain it in the native replay

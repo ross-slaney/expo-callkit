@@ -46,6 +46,35 @@ final class PushPayloadNormalizerTests: XCTestCase {
       "12345678-abcd-1234-abcd-1234567890ab"
     )
     XCTAssertNotNil(normalized.rawPayload["metadata"] as? [String: Any])
+    XCTAssertFalse(normalized.isTerminal)
+  }
+
+  func testMissedCallProviderPushIsTerminalNotANewRing() throws {
+    let callId = "87654321-dcba-4321-dcba-0987654321fe"
+    let normalized = try XCTUnwrap(PushPayloadNormalizer.normalize([
+      "message": "Missed call!",
+      "metadata": [
+        "call_id": callId,
+        "caller_name": "Test Caller",
+        "caller_number": "+14085550123",
+      ],
+    ]))
+
+    XCTAssertEqual(normalized.callId?.uuidString.lowercased(), callId)
+    XCTAssertTrue(normalized.isTerminal)
+  }
+
+  func testCanonicalMetadataCannotAccidentallyBecomeTerminal() throws {
+    let normalized = try XCTUnwrap(PushPayloadNormalizer.normalize([
+      "incomingCall": [
+        "eventId": "event-1",
+        "serverCallId": "server-1",
+        "caller": ["id": "caller-1"],
+        "metadata": ["message": "missed"],
+      ],
+    ]))
+
+    XCTAssertFalse(normalized.isTerminal)
   }
 
   func testOpaqueCallIdsProduceStableDistinctCallKitUuids() throws {
