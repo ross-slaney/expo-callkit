@@ -237,21 +237,49 @@ export function bindCallProviderAdapters(
   options: CallProviderRouterOptions = {},
 ): EventSubscription {
   const router = new CallProviderRouter(adapters, options);
-  const subscriptions = [
-    addCallKitListener("onIncomingCall", router.onIncoming),
-    addCallKitListener("onCallAnswered", (event) => {
-      router.onAnswered(event, {
-        acknowledge: answerAcknowledged,
-        fail: answerFailed,
-      });
-    }),
-    addCallKitListener("onCallEnded", router.onEnded),
-    addCallKitListener("onMuteChanged", router.onMuteChanged),
-    addCallKitListener("onHoldChanged", router.onHoldChanged),
-    addCallKitListener("onDtmf", router.onDtmf),
-    addCallKitListener("onAudioSessionActivated", router.onAudioActivated),
-    addCallKitListener("onAudioSessionDeactivated", router.onAudioDeactivated),
-  ];
+  const subscriptions: EventSubscription[] = [];
+  try {
+    // Register sequentially so a bridge error can roll back every listener
+    // that was already installed. Array literals abandon those subscriptions
+    // when a later expression throws, causing duplicate answer/end handling
+    // if the consuming app retries initialization.
+    subscriptions.push(addCallKitListener("onIncomingCall", router.onIncoming));
+    subscriptions.push(
+      addCallKitListener("onCallAnswered", (event) => {
+        router.onAnswered(event, {
+          acknowledge: answerAcknowledged,
+          fail: answerFailed,
+        });
+      }),
+    );
+    subscriptions.push(addCallKitListener("onCallEnded", router.onEnded));
+    subscriptions.push(
+      addCallKitListener("onMuteChanged", router.onMuteChanged),
+    );
+    subscriptions.push(
+      addCallKitListener("onHoldChanged", router.onHoldChanged),
+    );
+    subscriptions.push(addCallKitListener("onDtmf", router.onDtmf));
+    subscriptions.push(
+      addCallKitListener("onAudioSessionActivated", router.onAudioActivated),
+    );
+    subscriptions.push(
+      addCallKitListener(
+        "onAudioSessionDeactivated",
+        router.onAudioDeactivated,
+      ),
+    );
+  } catch (error) {
+    subscriptions.reverse().forEach((subscription) => {
+      try {
+        subscription.remove();
+      } catch {
+        // Preserve the original registration error; cleanup remains best effort.
+      }
+    });
+    router.clear();
+    throw error;
+  }
 
   return {
     remove() {
