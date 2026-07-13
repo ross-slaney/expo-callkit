@@ -106,6 +106,8 @@ export class CallProviderRouter {
   private readonly adapterByCall = new Map<string, CallProviderAdapter>();
   private readonly contextByCall = new Map<string, CallProviderContext>();
   private readonly preparationByCall = new Map<string, Promise<void>>();
+  private readonly answerByCall = new Map<string, Promise<void>>();
+  private readonly lifecycleTokenByCall = new Map<string, object>();
   private activeCallId: string | null = null;
   private audioActive = false;
 
@@ -170,11 +172,30 @@ export class CallProviderRouter {
       rawPushPayload: event.rawPushPayload,
     });
     let adapter: CallProviderAdapter | undefined;
+    const lifecycleToken = this.lifecycleToken(event.callId);
     try {
       adapter = this.resolve(context);
-      const preparation = this.preparationByCall.get(event.callId);
-      if (preparation) await preparation;
-      await adapter.answerIncoming(context);
+      let answer = this.answerByCall.get(event.callId);
+      if (!answer) {
+        answer = (async () => {
+          const preparation = this.preparationByCall.get(event.callId);
+          if (preparation) await preparation;
+          await adapter!.answerIncoming(context);
+        })();
+        this.answerByCall.set(event.callId, answer);
+      }
+      await answer;
+
+      // A terminal event or unbind can win while signaling/media connects.
+      // Never acknowledge or resurrect a call after its native lifecycle has
+      // already ended. Keeping the shared answer promise also prevents a
+      // replayed answer event from joining provider media twice.
+      if (
+        this.lifecycleTokenByCall.get(event.callId) !== lifecycleToken ||
+        this.adapterByCall.get(event.callId) !== adapter
+      ) {
+        return;
+      }
       this.activeCallId = event.callId;
       await bridge.acknowledge(event.requestId);
     } catch (error) {
@@ -188,6 +209,7 @@ export class CallProviderRouter {
   }
 
   onEnded = (event: CallEndedEvent): void => {
+    this.lifecycleTokenByCall.delete(event.callId);
     const context = this.mergeContext(event.callId, {
       callId: event.callId,
       provider: event.session.provider,
@@ -225,6 +247,7 @@ export class CallProviderRouter {
     this.adapterByCall.delete(event.callId);
     this.contextByCall.delete(event.callId);
     this.preparationByCall.delete(event.callId);
+    this.answerByCall.delete(event.callId);
   };
 
   onMuteChanged = (event: MuteChangedEvent): void => {
@@ -273,8 +296,19 @@ export class CallProviderRouter {
     this.adapterByCall.clear();
     this.contextByCall.clear();
     this.preparationByCall.clear();
+    this.answerByCall.clear();
+    this.lifecycleTokenByCall.clear();
     this.activeCallId = null;
     this.audioActive = false;
+  }
+
+  private lifecycleToken(callId: string): object {
+    let token = this.lifecycleTokenByCall.get(callId);
+    if (!token) {
+      token = {};
+      this.lifecycleTokenByCall.set(callId, token);
+    }
+    return token;
   }
 
   private mergeContext(

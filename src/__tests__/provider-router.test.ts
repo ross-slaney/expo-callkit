@@ -273,6 +273,50 @@ describe("CallProviderRouter", () => {
     );
   });
 
+  it("does not resurrect a call whose media answer finishes after native end", async () => {
+    let finishAnswer: (() => void) | undefined;
+    const telnyx = adapter("telnyx");
+    telnyx.answerIncoming.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishAnswer = resolve;
+        }),
+    );
+    const acknowledge = jest.fn(async () => {});
+    const fail = jest.fn(async () => {});
+    const router = new CallProviderRouter([telnyx]);
+
+    const answer = router.onAnswered(answered(), { acknowledge, fail });
+    expect(finishAnswer).toBeDefined();
+    router.onEnded(ended());
+    finishAnswer!();
+    await answer;
+    router.onAudioActivated();
+    await flush();
+
+    expect(telnyx.answerIncoming).toHaveBeenCalledTimes(1);
+    expect(telnyx.endCall).toHaveBeenCalledTimes(1);
+    expect(telnyx.activateAudio).not.toHaveBeenCalled();
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  it("joins provider media once when an answer event is replayed", async () => {
+    const telnyx = adapter("telnyx");
+    const acknowledge = jest.fn(async () => {});
+    const fail = jest.fn(async () => {});
+    const router = new CallProviderRouter([telnyx]);
+
+    await Promise.all([
+      router.onAnswered(answered(), { acknowledge, fail }),
+      router.onAnswered(answered(), { acknowledge, fail }),
+    ]);
+
+    expect(telnyx.answerIncoming).toHaveBeenCalledTimes(1);
+    expect(acknowledge).toHaveBeenCalledTimes(2);
+    expect(fail).not.toHaveBeenCalled();
+  });
+
   it("rejects an empty or ambiguous adapter registry", () => {
     expect(() => new CallProviderRouter([])).toThrow(
       CallProviderSelectionError,
