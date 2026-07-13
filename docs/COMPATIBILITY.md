@@ -50,9 +50,10 @@ CallKit, PushKit, or Core-Telecom compiles and behaves correctly.
 - The `ringtone` option references a sound that is already in the iOS app
   bundle or Android `res/raw`. The config plugin does not copy ringtone assets
   into generated native projects yet.
-- There is no bundled LiveKit, ACS, WebRTC, or SIP media adapter. This keeps the
-  package provider-agnostic, but each integration must implement and test the
-  media-acknowledgement and audio-session contract itself.
+- There is no bundled LiveKit, ACS, Telnyx, WebRTC, or SIP media implementation.
+  This keeps the package provider-agnostic. `bindCallProviderAdapters` provides
+  the shared selection, acknowledgement, audio-session, mute/hold/DTMF, and
+  teardown contract; each app adapter still owns and tests its SDK connection.
 - CI compiles clean Expo SDK 54 consumers and exercises native lifecycle state
   machines. It does not run real PushKit/FCM calls, lock-screen/wearable flows,
   or two-device audio tests on physical hardware.

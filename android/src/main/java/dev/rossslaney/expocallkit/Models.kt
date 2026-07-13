@@ -77,6 +77,7 @@ data class Participant(
 data class RingPayload(
     val eventId: String,
     val serverCallId: String,
+    val provider: String? = null,
     val caller: Participant,
     val hasVideo: Boolean = false,
     val metadata: Map<String, Any?>? = null,
@@ -84,6 +85,7 @@ data class RingPayload(
     fun toMap(): Map<String, Any?> = buildMap {
         put("eventId", eventId)
         put("serverCallId", serverCallId)
+        provider?.let { put("provider", it) }
         put("caller", caller.toMap())
         put("hasVideo", hasVideo)
         metadata?.let { put("metadata", it) }
@@ -99,6 +101,7 @@ data class RingPayload(
             return RingPayload(
                 eventId = eventId,
                 serverCallId = serverCallId,
+                provider = (raw["provider"] as? String)?.trim()?.takeIf { it.isNotEmpty() },
                 caller = caller,
                 hasVideo = raw["hasVideo"] as? Boolean ?: false,
                 metadata = raw["metadata"] as? Map<String, Any?>,
@@ -140,8 +143,10 @@ data class ActiveCall(
     val status: CallStatus,
     val remoteParty: Participant,
     val serverCallId: String? = null,
+    val provider: String? = null,
     val metadata: Map<String, Any?>? = null,
     val hasVideo: Boolean = false,
+    val incomingPayload: RingPayload? = null,
     val isMuted: Boolean = false,
     val isOnHold: Boolean = false,
     val connectedAt: Instant? = null,
@@ -158,6 +163,7 @@ data class ActiveCall(
             CallOrigin.OUTGOING -> put("recipient", remoteParty.toMap())
         }
         serverCallId?.let { put("serverCallId", it) }
+        provider?.let { put("provider", it) }
         metadata?.let { put("metadata", it) }
         connectedAt?.let { put("connectedAt", DateTimeFormatter.ISO_INSTANT.format(it)) }
     }

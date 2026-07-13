@@ -148,8 +148,10 @@ object CallEngine {
                 status = CallStatus.RINGING,
                 remoteParty = payload.caller,
                 serverCallId = payload.serverCallId,
+                provider = payload.provider,
                 metadata = payload.metadata,
                 hasVideo = payload.hasVideo,
+                incomingPayload = payload,
             )
         )
 
@@ -267,10 +269,11 @@ object CallEngine {
                 }
                 EventHub.emit(
                     CKEvents.CALL_ANSWERED,
-                    mapOf(
-                        "callId" to attempt.callId.toString(),
-                        "requestId" to attempt.requestId.toString(),
-                    ),
+                    buildMap {
+                        put("callId", attempt.callId.toString())
+                        put("requestId", attempt.requestId.toString())
+                        current.incomingPayload?.let { put("payload", it.toMap()) }
+                    },
                 )
             }
         }

@@ -18,6 +18,11 @@ import {
   normalizeIncomingCallPayload,
   normalizeParticipant,
 } from "./payload";
+import {
+  CallProviderRouter,
+  type CallProviderAdapter,
+  type CallProviderRouterOptions,
+} from "./provider-router";
 
 export * from "./ExpoCallKit.types";
 export { CALL_EVENTS, ALL_CALL_EVENT_NAMES } from "./events";
@@ -29,6 +34,7 @@ export {
   normalizeParticipant,
 } from "./payload";
 export { default as ExpoCallKitModule } from "./ExpoCallKitModule";
+export * from "./provider-router";
 
 /**
  * Reports an incoming call to the OS so the system ring UI appears.
@@ -173,4 +179,41 @@ export function addCallKitListener<EventName extends keyof ExpoCallKitEvents>(
   listener: ExpoCallKitEvents[EventName],
 ): EventSubscription {
   return ExpoCallKitModule.addListener(eventName, listener);
+}
+
+/**
+ * Binds one or more app-owned media/signaling providers to the native call
+ * lifecycle. The returned subscription removes every listener atomically.
+ *
+ * Selection is fail-closed: exactly one adapter must match each incoming call
+ * before the OS answer is acknowledged. No provider SDK becomes a dependency
+ * of this package.
+ */
+export function bindCallProviderAdapters(
+  adapters: readonly CallProviderAdapter[],
+  options: CallProviderRouterOptions = {},
+): EventSubscription {
+  const router = new CallProviderRouter(adapters, options);
+  const subscriptions = [
+    addCallKitListener("onIncomingCall", router.onIncoming),
+    addCallKitListener("onCallAnswered", (event) => {
+      router.onAnswered(event, {
+        acknowledge: answerAcknowledged,
+        fail: answerFailed,
+      });
+    }),
+    addCallKitListener("onCallEnded", router.onEnded),
+    addCallKitListener("onMuteChanged", router.onMuteChanged),
+    addCallKitListener("onHoldChanged", router.onHoldChanged),
+    addCallKitListener("onDtmf", router.onDtmf),
+    addCallKitListener("onAudioSessionActivated", router.onAudioActivated),
+    addCallKitListener("onAudioSessionDeactivated", router.onAudioDeactivated),
+  ];
+
+  return {
+    remove() {
+      subscriptions.forEach((subscription) => subscription.remove());
+      router.clear();
+    },
+  };
 }

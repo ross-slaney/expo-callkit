@@ -110,6 +110,7 @@ final class CallCenter: NSObject {
       status: .ringing,
       remoteParty: payload.caller,
       serverCallId: payload.serverCallId,
+      providerKey: payload.provider,
       metadata: payload.metadata,
       hasVideo: payload.hasVideo,
       incomingPayload: payload
@@ -228,6 +229,7 @@ final class CallCenter: NSObject {
       status: .connecting,
       remoteParty: recipient,
       serverCallId: nil,
+      providerKey: nil,
       metadata: metadata,
       hasVideo: hasVideo,
       incomingPayload: nil

@@ -20,6 +20,12 @@ export type IncomingCallPayload = {
   eventId: string;
   /** Your backend's id for the call (distinct from the OS-assigned call id). */
   serverCallId: string;
+  /**
+   * Stable media/signaling provider key selected by the consuming app
+   * (for example `acs` or `telnyx`). Optional for backwards compatibility;
+   * multi-provider apps should always set it on canonical pushes.
+   */
+  provider?: string;
   caller: CallParticipant;
   hasVideo?: boolean;
   /** Opaque app data carried through to events untouched. */
@@ -51,6 +57,8 @@ export type CallSession = {
   /** Remote party for outgoing calls. */
   recipient?: CallParticipant;
   serverCallId?: string;
+  /** Provider key copied from the incoming payload when supplied. */
+  provider?: string;
   metadata?: Record<string, unknown>;
   /** Complete JSON-safe PushKit body for a native iOS incoming call. */
   rawPushPayload?: Record<string, unknown>;

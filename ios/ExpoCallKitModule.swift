@@ -34,6 +34,9 @@ struct IncomingCallRecord: Record {
   var serverCallId: String = ""
 
   @Field
+  var provider: String?
+
+  @Field
   var caller: ParticipantRecord = ParticipantRecord()
 
   @Field
@@ -49,6 +52,7 @@ struct IncomingCallRecord: Record {
     return RingPayload(
       eventId: eventId,
       serverCallId: serverCallId,
+      provider: provider,
       caller: caller.asParticipant(),
       hasVideo: hasVideo,
       metadata: metadata,

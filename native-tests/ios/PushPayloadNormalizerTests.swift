@@ -9,6 +9,7 @@ final class PushPayloadNormalizerTests: XCTestCase {
       "incomingCall": [
         "eventId": "event-1",
         "serverCallId": "server-1",
+        "provider": "acs",
         "caller": ["id": "caller-1", "displayName": "Jane"],
         "metadata": ["bookingId": 42],
       ],
@@ -17,6 +18,7 @@ final class PushPayloadNormalizerTests: XCTestCase {
     let normalized = try XCTUnwrap(PushPayloadNormalizer.normalize(envelope))
     XCTAssertEqual(normalized.eventId, "event-1")
     XCTAssertEqual(normalized.serverCallId, "server-1")
+    XCTAssertEqual(normalized.provider, "acs")
     XCTAssertEqual(normalized.callerName, "Jane")
     XCTAssertEqual(normalized.metadata?["bookingId"] as? Int, 42)
     XCTAssertNotNil(normalized.rawPayload["aps"] as? [String: Any])
@@ -26,6 +28,7 @@ final class PushPayloadNormalizerTests: XCTestCase {
     let callId = "87654321-dcba-4321-dcba-0987654321fe"
     let envelope: [AnyHashable: Any] = [
       "metadata": [
+        "provider": "telnyx",
         "voice_sdk_id": "12345678-abcd-1234-abcd-1234567890ab",
         "call_id": callId,
         "caller_name": "Test Caller",
@@ -37,6 +40,7 @@ final class PushPayloadNormalizerTests: XCTestCase {
     let normalized = try XCTUnwrap(PushPayloadNormalizer.normalize(envelope))
     XCTAssertEqual(normalized.eventId, callId)
     XCTAssertEqual(normalized.serverCallId, callId)
+    XCTAssertEqual(normalized.provider, "telnyx")
     XCTAssertEqual(normalized.callerId, "+14085550123")
     XCTAssertEqual(normalized.callerName, "Test Caller")
     XCTAssertEqual(normalized.callerNumber, "+14085550123")

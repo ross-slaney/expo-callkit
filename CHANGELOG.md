@@ -15,6 +15,13 @@
 
 ## 0.2.0 - 2026-07-12
 
+- Added an optional canonical `provider` key that survives native incoming-call
+  and session serialization for multi-provider apps.
+- Added `bindCallProviderAdapters`, a dependency-free, fail-closed router for
+  ACS, Telnyx, or other app-owned signaling/media adapters. It preserves one
+  adapter selection across cold-start answer/end replay and routes audio,
+  mute, hold, DTMF, and teardown without bundling a carrier SDK.
+
 - iOS: remove the cold-start acknowledgement race by registering pending
   answers synchronously before their request ids are emitted.
 - iOS: deterministically tear down failed/timed-out answers and handle CallKit's

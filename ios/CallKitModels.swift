@@ -112,6 +112,7 @@ struct ActiveCall {
   var status: CallStatus
   let remoteParty: Participant
   let serverCallId: String?
+  let providerKey: String?
   let metadata: [String: Any]?
   let hasVideo: Bool
   let incomingPayload: RingPayload?
@@ -141,6 +142,7 @@ struct ActiveCall {
       dict["recipient"] = remoteParty.asDictionary()
     }
     if let serverCallId { dict["serverCallId"] = serverCallId }
+    if let providerKey { dict["provider"] = providerKey }
     if let metadata { dict["metadata"] = metadata }
     if let rawPushPayload = incomingPayload?.rawPushPayload {
       dict["rawPushPayload"] = rawPushPayload
@@ -158,6 +160,7 @@ struct ActiveCall {
 struct RingPayload {
   let eventId: String
   let serverCallId: String
+  let provider: String?
   let caller: Participant
   let hasVideo: Bool
   let metadata: [String: Any]?
@@ -172,6 +175,7 @@ struct RingPayload {
       "caller": caller.asDictionary(),
       "hasVideo": hasVideo,
     ]
+    if let provider { dict["provider"] = provider }
     if let metadata { dict["metadata"] = metadata }
     return dict
   }
@@ -186,6 +190,7 @@ struct RingPayload {
     return RingPayload(
       eventId: normalized.eventId,
       serverCallId: normalized.serverCallId,
+      provider: normalized.provider,
       caller: Participant(
         id: normalized.callerId,
         displayName: normalized.callerName,
@@ -215,6 +220,7 @@ struct RingPayload {
     return RingPayload(
       eventId: eventId,
       serverCallId: serverCallId,
+      provider: nonEmptyString(fields["provider"]),
       caller: Participant(
         id: callerId,
         displayName: nonEmptyString(callerFields["displayName"]),

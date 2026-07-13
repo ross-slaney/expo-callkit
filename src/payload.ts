@@ -112,6 +112,8 @@ export function normalizeIncomingCallPayload(
     serverCallId: requiredString(input, "serverCallId", "payload"),
     caller: normalizeParticipant(input.caller, "payload.caller"),
   };
+  const provider = optionalString(input, "provider", "payload");
+  if (provider !== undefined) payload.provider = provider;
   if (input.hasVideo !== undefined) {
     if (typeof input.hasVideo !== "boolean") {
       throw new CallKitValidationError("payload.hasVideo must be a boolean");

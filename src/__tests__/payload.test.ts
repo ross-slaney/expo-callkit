@@ -33,6 +33,12 @@ describe("normalizeIncomingCallPayload", () => {
     expect(result.metadata).toEqual(metadata);
   });
 
+  it("normalizes an explicit provider key for multi-provider apps", () => {
+    expect(
+      normalizeIncomingCallPayload({ ...valid, provider: "  telnyx  " }),
+    ).toMatchObject({ provider: "telnyx" });
+  });
+
   it("trims string fields and drops empty optionals", () => {
     const result = normalizeIncomingCallPayload({
       eventId: "  evt-2  ",
@@ -58,6 +64,10 @@ describe("normalizeIncomingCallPayload", () => {
     [
       "array metadata",
       { eventId: "e", serverCallId: "s", caller: { id: "c" }, metadata: [1] },
+    ],
+    [
+      "non-string provider",
+      { eventId: "e", serverCallId: "s", caller: { id: "c" }, provider: 1 },
     ],
   ])("rejects %s", (_label, input) => {
     expect(() => normalizeIncomingCallPayload(input)).toThrow(

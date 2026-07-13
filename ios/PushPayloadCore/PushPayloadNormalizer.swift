@@ -9,6 +9,7 @@ import Foundation
 struct NormalizedPushRing {
   let eventId: String
   let serverCallId: String
+  let provider: String?
   let callerId: String
   let callerName: String?
   let callerNumber: String?
@@ -55,6 +56,7 @@ enum PushPayloadNormalizer {
     return NormalizedPushRing(
       eventId: eventId,
       serverCallId: serverCallId,
+      provider: nonEmptyString(fields["provider"]),
       callerId: callerId,
       callerName: nonEmptyString(caller["displayName"]),
       callerNumber: nonEmptyString(caller["phoneNumber"]),
@@ -83,6 +85,7 @@ enum PushPayloadNormalizer {
     return NormalizedPushRing(
       eventId: eventId,
       serverCallId: callId,
+      provider: nonEmptyString(metadata["provider"] ?? rawPayload["provider"]),
       callerId: callerId,
       callerName: callerName,
       callerNumber: callerNumber,

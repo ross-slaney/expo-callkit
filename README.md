@@ -11,6 +11,11 @@ This module owns the _system_ side of calling only:
 
 Call _media_ is your app's job (e.g. the Azure Communication Services calling SDK). The module tells you when to connect (`onCallAnswered`) and when audio I/O may start (`onAudioSessionActivated`); you tell it when media is up (`answerAcknowledged`, `reportOutgoingCallConnected`).
 
+Multi-provider apps do not need parallel CallKit integrations. The package
+includes a provider-neutral adapter router that selects exactly one app-owned
+media adapter per call and forwards the complete lifecycle to it. Carrier SDKs
+remain dependencies of the app, never this package.
+
 > **This package is CallKit/Telecom plumbing, not a phone service or media
 > stack.** Installing it does not provision a phone number, route calls, send
 > VoIP pushes, or carry audio. Your backend/signaling provider must deliver the
@@ -159,6 +164,68 @@ native call session.
 
 Remote hangup / answered-on-another-device? Tell the module: `CallKit.reportCallEnded(callId, "remoteEnded")` (or `"answeredElsewhere"`, ...).
 
+### ACS + Telnyx (or any multi-provider app)
+
+Canonical backend pushes should include a stable `provider` key. The native
+session preserves it across incoming, answered, and ended events, including a
+killed-state replay:
+
+```json
+{
+  "incomingCall": {
+    "eventId": "3f6c8e1a-…",
+    "serverCallId": "provider-call-id",
+    "provider": "acs",
+    "caller": { "id": "caller-id", "displayName": "Jane" }
+  }
+}
+```
+
+Bind both app-owned SDK adapters once at the app root. The router fails closed
+when zero or multiple adapters match, waits for preparation, acknowledges the
+native answer only after `answerIncoming` resolves, and routes audio, mute,
+hold, DTMF, and cold-start teardown back to the same adapter:
+
+```ts
+const binding = CallKit.bindCallProviderAdapters([
+  {
+    id: "acs",
+    prepareIncoming: (call) => acs.prefetch(call.serverCallId),
+    answerIncoming: (call) => acs.answer(call.serverCallId),
+    endCall: (call, reason) => acs.end(call.serverCallId, reason),
+    activateAudio: () => acs.startAudio(),
+    deactivateAudio: () => acs.stopAudio(),
+    setMuted: (_call, muted) => acs.setMuted(muted),
+    setOnHold: (_call, held) => acs.setHeld(held),
+  },
+  {
+    id: "telnyx",
+    matches: ({ provider, rawPushPayload }) =>
+      provider === "telnyx" || isTelnyxPush(rawPushPayload),
+    prepareIncoming: (call) => telnyx.prepare(call.rawPushPayload),
+    answerIncoming: (call) => telnyx.answer(call.rawPushPayload),
+    endCall: (call, reason) => telnyx.end(call.rawPushPayload, reason),
+    activateAudio: () => telnyx.startAudio(),
+    deactivateAudio: () => telnyx.stopAudio(),
+    setMuted: (_call, muted) => telnyx.setMuted(muted),
+    setOnHold: (_call, held) => telnyx.setHeld(held),
+    sendDtmf: (_call, digits) => telnyx.sendDtmf(digits),
+  },
+], {
+  // Send sanitized diagnostics to your own observability boundary. Never log
+  // the context or rawPushPayload.
+  onError: ({ phase, adapterId }) => reportCallFailure({ phase, adapterId }),
+});
+
+// On app-root teardown only:
+binding.remove();
+```
+
+An explicit canonical `provider` selects the same adapter `id` and is
+authoritative. `matches` is an app-defined fallback only for direct carrier
+pushes that cannot include the canonical key. The router never imports,
+identifies, or initializes either SDK.
+
 ### Outgoing calls
 
 ```ts
@@ -190,6 +257,7 @@ Send to APNs with headers `apns-push-type: voip`, `apns-priority: 10`, `apns-exp
   "incomingCall": {
     "eventId": "3f6c8e1a-…",
     "serverCallId": "acs-call-id-from-backend",
+    "provider": "acs",
     "caller": {
       "id": "8:acs:…",
       "displayName": "Jane from Acme Salon",
@@ -286,6 +354,7 @@ All ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXISTS`,
 | `configureAudioSession()`             | `void`                         | iOS AVAudioSession pre-heat. Android no-op           |
 | `requestPermissions()`                | `Promise<{ notifications }>`   | Android 13+ POST_NOTIFICATIONS; iOS `granted`        |
 | `addCallKitListener(name, fn)`        | `EventSubscription`            | Typed listener helper                                |
+| `bindCallProviderAdapters(adapters)`  | `EventSubscription`            | Fail-closed multi-provider media lifecycle router    |
 
 | Event                       | Payload (plus `meta: { flushed, timestamp }`)             |
 | --------------------------- | --------------------------------------------------------- |
