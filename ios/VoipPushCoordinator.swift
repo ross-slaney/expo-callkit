@@ -12,6 +12,7 @@ final class VoipPushCoordinator: NSObject {
   static let shared = VoipPushCoordinator()
 
   private static let dedupeWindow: TimeInterval = 120
+  private static let tokenDefaultsKey = "expo-callkit.pushkit-token.v1"
 
   private let lock = NSLock()
   private var registry: PKPushRegistry?
@@ -19,6 +20,11 @@ final class VoipPushCoordinator: NSObject {
   private var seenEventIds: [String: Date] = [:]
 
   private override init() {
+    // PushKit tokens are stable across launches until Apple invalidates them.
+    // Restore the last native value synchronously so JavaScript can associate
+    // the device with its calling provider even when PKPushRegistry has not
+    // re-delivered didUpdatePushCredentials yet during a cold launch.
+    tokenValue = UserDefaults.standard.string(forKey: Self.tokenDefaultsKey)
     super.init()
   }
 
@@ -53,6 +59,11 @@ final class VoipPushCoordinator: NSObject {
 
     guard changed else {
       return
+    }
+    if let newValue {
+      UserDefaults.standard.set(newValue, forKey: Self.tokenDefaultsKey)
+    } else {
+      UserDefaults.standard.removeObject(forKey: Self.tokenDefaultsKey)
     }
     EventHub.shared.emit(CKEvent.voipTokenUpdated, [
       "token": newValue ?? NSNull(),

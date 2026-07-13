@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- iOS: durably restore the last valid PushKit token across cold launches and
+  build upgrades until Apple explicitly invalidates it, so provider login does
+  not depend on the timing of a repeated token callback.
+
 - Audio routing: add a typed, provider-neutral current/available route state,
   realtime `onAudioRouteChanged` updates, guarded route selection on iOS and
   Android, and an explicit iOS speaker override. Route mutations are limited to
