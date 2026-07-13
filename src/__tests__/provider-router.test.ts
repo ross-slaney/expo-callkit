@@ -108,6 +108,7 @@ describe("CallProviderRouter", () => {
         provider: "telnyx",
         serverCallId: "server-1",
         rawPushPayload: { provider: "telnyx", opaque: "sensitive" },
+        eventMeta: meta,
       }),
     );
     expect(telnyx.answerIncoming).toHaveBeenCalledTimes(1);

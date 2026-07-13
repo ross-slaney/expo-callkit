@@ -4,6 +4,7 @@ import type {
   CallEndReason,
   CallSession,
   DtmfEvent,
+  EventMeta,
   HoldChangedEvent,
   IncomingCallEvent,
   IncomingCallPayload,
@@ -18,6 +19,8 @@ export type CallProviderContext = {
   payload?: IncomingCallPayload;
   session?: CallSession;
   rawPushPayload?: Record<string, unknown>;
+  /** Native event timing, including the original timestamp after cold-start replay. */
+  eventMeta?: EventMeta;
 };
 
 /**
@@ -142,6 +145,7 @@ export class CallProviderRouter {
       serverCallId: event.payload.serverCallId,
       payload: event.payload,
       rawPushPayload: event.rawPushPayload,
+      eventMeta: event.meta,
     });
     try {
       const adapter = this.resolve(context);
@@ -170,6 +174,7 @@ export class CallProviderRouter {
       serverCallId: event.payload?.serverCallId,
       payload: event.payload,
       rawPushPayload: event.rawPushPayload,
+      eventMeta: event.meta,
     });
     let adapter: CallProviderAdapter | undefined;
     const lifecycleToken = this.lifecycleToken(event.callId);
@@ -216,6 +221,7 @@ export class CallProviderRouter {
       serverCallId: event.session.serverCallId,
       session: event.session,
       rawPushPayload: event.rawPushPayload ?? event.session.rawPushPayload,
+      eventMeta: event.meta,
     });
     let adapter: CallProviderAdapter | undefined;
     try {
@@ -324,6 +330,7 @@ export class CallProviderRouter {
       payload: next.payload ?? previous?.payload,
       session: next.session ?? previous?.session,
       rawPushPayload: next.rawPushPayload ?? previous?.rawPushPayload,
+      eventMeta: next.eventMeta ?? previous?.eventMeta,
     };
     this.contextByCall.set(callId, merged);
     return merged;
