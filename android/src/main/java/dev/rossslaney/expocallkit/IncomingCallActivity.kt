@@ -65,6 +65,12 @@ class IncomingCallActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
+            )
         }
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
@@ -158,7 +164,6 @@ class IncomingCallActivity : Activity() {
         val id = callId ?: return
         isAnswering = true
         CallEngine.handleAnswer(id)
-        CallNotifications.dismiss(this)
         unlockAndOpenApp()
         finish()
     }
@@ -179,25 +184,21 @@ class IncomingCallActivity : Activity() {
         }
 
         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            keyguard.requestDismissKeyguard(
-                this,
-                object : KeyguardManager.KeyguardDismissCallback() {
-                    override fun onDismissSucceeded() {
-                        launch?.let { startActivity(it) }
-                    }
+        keyguard.requestDismissKeyguard(
+            this,
+            object : KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() {
+                    launch?.let { startActivity(it) }
+                }
 
-                    override fun onDismissCancelled() {
-                        launch?.let { startActivity(it) }
-                    }
+                override fun onDismissCancelled() {
+                    launch?.let { startActivity(it) }
+                }
 
-                    override fun onDismissError() {
-                        launch?.let { startActivity(it) }
-                    }
-                },
-            )
-        } else {
-            launch?.let { startActivity(it) }
-        }
+                override fun onDismissError() {
+                    launch?.let { startActivity(it) }
+                }
+            },
+        )
     }
 }

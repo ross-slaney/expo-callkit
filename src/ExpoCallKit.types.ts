@@ -20,6 +20,12 @@ export type IncomingCallPayload = {
   eventId: string;
   /** Your backend's id for the call (distinct from the OS-assigned call id). */
   serverCallId: string;
+  /**
+   * Stable media/signaling provider key selected by the consuming app
+   * (for example `acs` or `telnyx`). Optional for backwards compatibility;
+   * multi-provider apps should always set it on canonical pushes.
+   */
+  provider?: string;
   caller: CallParticipant;
   hasVideo?: boolean;
   /** Opaque app data carried through to events untouched. */
@@ -51,7 +57,11 @@ export type CallSession = {
   /** Remote party for outgoing calls. */
   recipient?: CallParticipant;
   serverCallId?: string;
+  /** Provider key copied from the incoming payload when supplied. */
+  provider?: string;
   metadata?: Record<string, unknown>;
+  /** Complete JSON-safe PushKit body for a native iOS incoming call. */
+  rawPushPayload?: Record<string, unknown>;
   isMuted: boolean;
   isOnHold: boolean;
   /** ISO 8601 timestamp set once the call reaches "connected". */
@@ -78,6 +88,8 @@ export type EventMeta = {
 export type IncomingCallEvent = {
   callId: string;
   payload: IncomingCallPayload;
+  /** Complete JSON-safe PushKit body. Present for native iOS VoIP pushes. */
+  rawPushPayload?: Record<string, unknown>;
   meta: EventMeta;
 };
 
@@ -87,8 +99,14 @@ export type CallAnsweredEvent = {
    * Pass to `answerAcknowledged` once your media layer is connected, or to
    * `answerFailed` if connecting failed. On iOS the system answer action is
    * held open until one of the two is called (or the fulfill timeout fires).
+   * Android answers initiated by Telecom system surfaces must resolve inside
+   * the package's 4.5-second callback budget.
    */
   requestId: string;
+  /** Canonical incoming payload, included when answering an incoming call. */
+  payload?: IncomingCallPayload;
+  /** Complete JSON-safe PushKit body for reconnecting a media/signaling SDK. */
+  rawPushPayload?: Record<string, unknown>;
   meta: EventMeta;
 };
 
@@ -96,11 +114,15 @@ export type CallEndedEvent = {
   callId: string;
   session: CallSession;
   reason: CallEndReason;
+  /** Complete JSON-safe PushKit body for a native iOS incoming call. */
+  rawPushPayload?: Record<string, unknown>;
   meta: EventMeta;
 };
 
 export type OutgoingCallStartedEvent = {
   callId: string;
+  /** Canonical native session, including the app-selected provider key. */
+  session: CallSession;
   meta: EventMeta;
 };
 
@@ -126,6 +148,47 @@ export type AudioSessionEvent = {
   meta: EventMeta;
 };
 
+/** User-visible audio path for a native call. Route ids are opaque. */
+export type AudioRoute = {
+  /** Opaque native identifier. Pass this value back to `selectAudioRoute`. */
+  id: string;
+  /** OS-provided display name, suitable for a route picker. */
+  name: string;
+  type:
+    | "earpiece"
+    | "speaker"
+    | "bluetooth"
+    | "wiredHeadset"
+    | "carAudio"
+    | "hearingAid"
+    | "streaming"
+    | "unknown";
+};
+
+/**
+ * Current native audio-route state for the package's single active call.
+ * Capability flags are false until the OS-owned call audio session is active.
+ */
+export type AudioRouteState = {
+  /** Active call correlated with this state, or null when no call owns audio. */
+  callId: string | null;
+  isAudioActive: boolean;
+  currentRoute: AudioRoute | null;
+  /** Routes the OS currently allows the app to request. */
+  availableRoutes: AudioRoute[];
+  supportsRouteSelection: boolean;
+  /** iOS output override support. Android uses endpoint selection instead. */
+  supportsSpeakerOverride: boolean;
+};
+
+/** How `playCallFeedback` acknowledged a private in-call event. */
+export type CallFeedbackMode = "audio" | "haptic";
+
+/** Realtime-only route update. Query `getAudioRouteState` after a cold start. */
+export type AudioRouteChangedEvent = AudioRouteState & {
+  meta: EventMeta;
+};
+
 export type VoipTokenUpdatedEvent = {
   /** Null when the OS invalidated the token. */
   token: string | null;
@@ -143,6 +206,7 @@ export type ExpoCallKitEvents = {
   onDtmf: (event: DtmfEvent) => void;
   onAudioSessionActivated: (event: AudioSessionEvent) => void;
   onAudioSessionDeactivated: (event: AudioSessionEvent) => void;
+  onAudioRouteChanged: (event: AudioRouteChangedEvent) => void;
   onVoipTokenUpdated: (event: VoipTokenUpdatedEvent) => void;
 };
 
@@ -154,6 +218,12 @@ export type CallKitPermissions = {
 };
 
 export type OutgoingCallOptions = {
+  /**
+   * Stable media/signaling provider key for multi-provider apps (for example
+   * `acs` or `telnyx`). The provider router uses this to bind every native
+   * mute, hold, DTMF, audio, and end action to exactly one app adapter.
+   */
+  provider?: string;
   hasVideo?: boolean;
   metadata?: Record<string, unknown>;
 };

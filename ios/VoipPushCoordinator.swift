@@ -12,13 +12,34 @@ final class VoipPushCoordinator: NSObject {
   static let shared = VoipPushCoordinator()
 
   private static let dedupeWindow: TimeInterval = 120
+  private static let legacyTokenDefaultsKey = "expo-callkit.pushkit-token.v1"
+  private static let tokenDefaultsKey = "expo-callkit.pushkit-token.v2"
 
   private let lock = NSLock()
+  private let apsEnvironment: APNSEnvironment?
   private var registry: PKPushRegistry?
   private var tokenValue: String?
   private var seenEventIds: [String: Date] = [:]
 
   private override init() {
+    let defaults = UserDefaults.standard
+    let environment = Self.currentApsEnvironment()
+    let persistedValue = defaults.object(forKey: Self.tokenDefaultsKey)
+    let restoration = PushTokenPersistence.restore(
+      data: persistedValue as? Data,
+      currentEnvironment: environment
+    )
+    apsEnvironment = environment
+    tokenValue = restoration.token
+
+    // v1 stored a bare token, so it could restore a development token into a
+    // production build (or the reverse). It is intentionally not migrated.
+    defaults.removeObject(forKey: Self.legacyTokenDefaultsKey)
+    if (persistedValue != nil && !(persistedValue is Data))
+      || restoration.shouldRemovePersistedValue
+    {
+      defaults.removeObject(forKey: Self.tokenDefaultsKey)
+    }
     super.init()
   }
 
@@ -54,10 +75,38 @@ final class VoipPushCoordinator: NSObject {
     guard changed else {
       return
     }
+    if let newValue, let apsEnvironment,
+      let data = PushTokenPersistence.encode(token: newValue, environment: apsEnvironment)
+    {
+      UserDefaults.standard.set(data, forKey: Self.tokenDefaultsKey)
+    } else {
+      UserDefaults.standard.removeObject(forKey: Self.tokenDefaultsKey)
+    }
     EventHub.shared.emit(CKEvent.voipTokenUpdated, [
       "token": newValue ?? NSNull(),
       "type": "apns-voip",
     ])
+  }
+
+  /// Development/ad-hoc builds carry the signed provisioning profile. Apple
+  /// strips it from App Store/TestFlight installs, whose APNs environment is
+  /// production. If a present profile cannot be read, fail closed instead of
+  /// guessing and restoring a token from the wrong environment.
+  private static func currentApsEnvironment() -> APNSEnvironment? {
+    #if targetEnvironment(simulator)
+    return nil
+    #else
+    guard let profileUrl = Bundle.main.url(
+      forResource: "embedded",
+      withExtension: "mobileprovision"
+    ) else {
+      return .production
+    }
+    guard let profileData = try? Data(contentsOf: profileUrl) else {
+      return nil
+    }
+    return APNSEnvironment.fromProvisioningProfile(profileData)
+    #endif
   }
 
   /// Records `eventId`, returning true when it was already seen within the
@@ -112,7 +161,7 @@ extension VoipPushCoordinator: PKPushRegistryDelegate {
     }
 
     guard let ring = RingPayload.fromPushEnvelope(payload.dictionaryPayload) else {
-      NSLog("[ExpoCallKit] VoIP push payload missing/invalid 'incomingCall' envelope")
+      NSLog("[ExpoCallKit] VoIP push payload could not be normalized")
       CallCenter.shared.reportDiscardedPush(
         callerName: nil,
         reason: .failed,
@@ -121,8 +170,21 @@ extension VoipPushCoordinator: PKPushRegistryDelegate {
       return
     }
 
+    // Some providers deliver a terminal VoIP push after the caller hangs up
+    // or the dial times out. It is not a second incoming call. Close a stale
+    // deterministic ring if one still exists, then perform the report-and-end
+    // watchdog required for every PushKit delivery.
+    if ring.isTerminalPush {
+      CallCenter.shared.handleTerminalPush(
+        callId: ring.callId,
+        callerName: ring.caller.displayName,
+        completion: completion
+      )
+      return
+    }
+
     guard !isDuplicate(eventId: ring.eventId) else {
-      NSLog("[ExpoCallKit] Duplicate VoIP push dropped (eventId: \(ring.eventId))")
+      NSLog("[ExpoCallKit] Duplicate VoIP push dropped")
       CallCenter.shared.reportDiscardedPush(
         callerName: ring.caller.displayName,
         reason: .failed,

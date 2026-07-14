@@ -14,12 +14,13 @@ describe("CALL_EVENTS", () => {
       dtmf: "onDtmf",
       audioSessionActivated: "onAudioSessionActivated",
       audioSessionDeactivated: "onAudioSessionDeactivated",
+      audioRouteChanged: "onAudioRouteChanged",
       voipTokenUpdated: "onVoipTokenUpdated",
     });
   });
 
-  it("exposes 10 unique event names", () => {
-    expect(ALL_CALL_EVENT_NAMES).toHaveLength(10);
-    expect(new Set(ALL_CALL_EVENT_NAMES).size).toBe(10);
+  it("exposes 11 unique event names", () => {
+    expect(ALL_CALL_EVENT_NAMES).toHaveLength(11);
+    expect(new Set(ALL_CALL_EVENT_NAMES).size).toBe(11);
   });
 });

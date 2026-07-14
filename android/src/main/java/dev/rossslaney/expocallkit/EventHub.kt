@@ -30,13 +30,7 @@ object EventHub {
     private val observed = mutableSetOf<String>()
     private val buffers = mutableMapOf<String, MutableList<Buffered>>()
 
-    private val replayLimits: Map<String, Int> = mapOf(
-        CKEvents.INCOMING_CALL to 1,
-        CKEvents.CALL_ANSWERED to 1,
-        CKEvents.CALL_ENDED to 1,
-        CKEvents.VOIP_TOKEN_UPDATED to 1,
-        CKEvents.AUDIO_SESSION_ACTIVATED to 1,
-    )
+    private val replayLimits = EventReplayPolicy.limits
 
     private val broadcastableEvents = setOf(CKEvents.CALL_ENDED)
 

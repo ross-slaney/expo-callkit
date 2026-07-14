@@ -1,7 +1,11 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.library'
 
+def packageJson = new JsonSlurper().parseText(file('../package.json').text)
+
 group = 'dev.rossslaney.expocallkit'
-version = '0.1.0'
+version = packageJson.version
 
 def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
 apply from: expoModulesCorePlugin
@@ -24,9 +28,10 @@ if (useManagedAndroidSdkVersions) {
   project.android {
     compileSdkVersion safeExtGet("compileSdkVersion", 36)
     defaultConfig {
-      // androidx.core:core-telecom requires API 26+. Consumers must raise
-      // minSdkVersion to at least 26 (e.g. via expo-build-properties).
-      minSdkVersion safeExtGet("minSdkVersion", 26)
+      // CallsManager is @RequiresApi(26). Never inherit a lower app/root
+      // default: the manifest merger should reject an incompatible consumer
+      // at build time instead of shipping an API 24/25 runtime crash.
+      minSdkVersion Math.max(26, safeExtGet("minSdkVersion", 26) as int)
       targetSdkVersion safeExtGet("targetSdkVersion", 36)
     }
   }
@@ -36,10 +41,7 @@ android {
   namespace "dev.rossslaney.expocallkit"
   defaultConfig {
     versionCode 1
-    versionName "0.1.0"
-  }
-  lintOptions {
-    abortOnError false
+    versionName packageJson.version
   }
 }
 

@@ -30,3 +30,27 @@ internal class NotInitializedError :
         "ExpoCallKit has not been initialized yet (no Telecom registration)",
         null,
     )
+
+internal class AudioSessionInactiveError :
+    CodedException(
+        "ERR_AUDIO_INACTIVE",
+        "Call audio is not active; wait for onAudioSessionActivated before changing routes",
+        null,
+    )
+
+internal class AudioRouteUnavailableError(routeId: String) :
+    CodedException(
+        "ERR_AUDIO_ROUTE_UNAVAILABLE",
+        "Audio route '$routeId' is no longer available; refresh getAudioRouteState()",
+        null,
+    )
+
+internal class AudioRouteRejectedError(detail: String) :
+    CodedException(
+        "ERR_AUDIO_ROUTE_REJECTED",
+        "Telecom rejected the audio route change: $detail",
+        null,
+    )
+
+internal class AudioRouteUnsupportedError(detail: String) :
+    CodedException("ERR_AUDIO_ROUTE_UNSUPPORTED", detail, null)

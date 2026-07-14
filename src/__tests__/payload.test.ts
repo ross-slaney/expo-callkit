@@ -4,6 +4,7 @@ import {
   isCallEndReason,
   isUuidString,
   normalizeIncomingCallPayload,
+  normalizeOutgoingCallOptions,
   normalizeParticipant,
 } from "../payload";
 
@@ -33,6 +34,12 @@ describe("normalizeIncomingCallPayload", () => {
     expect(result.metadata).toEqual(metadata);
   });
 
+  it("normalizes an explicit provider key for multi-provider apps", () => {
+    expect(
+      normalizeIncomingCallPayload({ ...valid, provider: "  telnyx  " }),
+    ).toMatchObject({ provider: "telnyx" });
+  });
+
   it("trims string fields and drops empty optionals", () => {
     const result = normalizeIncomingCallPayload({
       eventId: "  evt-2  ",
@@ -58,6 +65,10 @@ describe("normalizeIncomingCallPayload", () => {
     [
       "array metadata",
       { eventId: "e", serverCallId: "s", caller: { id: "c" }, metadata: [1] },
+    ],
+    [
+      "non-string provider",
+      { eventId: "e", serverCallId: "s", caller: { id: "c" }, provider: 1 },
     ],
   ])("rejects %s", (_label, input) => {
     expect(() => normalizeIncomingCallPayload(input)).toThrow(
@@ -98,6 +109,33 @@ describe("normalizeParticipant", () => {
       phoneNumber: "+1555",
       email: "a@b.c",
     });
+  });
+});
+
+describe("normalizeOutgoingCallOptions", () => {
+  it("normalizes a provider and preserves valid media options", () => {
+    expect(
+      normalizeOutgoingCallOptions({
+        provider: "  telnyx  ",
+        hasVideo: false,
+        metadata: { geniusCallId: "call-1" },
+      }),
+    ).toEqual({
+      provider: "telnyx",
+      hasVideo: false,
+      metadata: { geniusCallId: "call-1" },
+    });
+  });
+
+  it.each([
+    ["a non-object", null],
+    ["a non-string provider", { provider: 42 }],
+    ["a non-boolean hasVideo", { hasVideo: "yes" }],
+    ["array metadata", { metadata: [] }],
+  ])("rejects %s", (_label, input) => {
+    expect(() => normalizeOutgoingCallOptions(input)).toThrow(
+      CallKitValidationError,
+    );
   });
 });
 

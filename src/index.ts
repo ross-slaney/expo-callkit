@@ -5,6 +5,8 @@ import type {
   CallKitPermissions,
   CallParticipant,
   CallSession,
+  AudioRouteState,
+  CallFeedbackMode,
   ExpoCallKitEvents,
   IncomingCallPayload,
   OutgoingCallOptions,
@@ -16,8 +18,14 @@ import {
   isCallEndReason,
   CallKitValidationError,
   normalizeIncomingCallPayload,
+  normalizeOutgoingCallOptions,
   normalizeParticipant,
 } from "./payload";
+import {
+  CallProviderRouter,
+  type CallProviderAdapter,
+  type CallProviderRouterOptions,
+} from "./provider-router";
 
 export * from "./ExpoCallKit.types";
 export { CALL_EVENTS, ALL_CALL_EVENT_NAMES } from "./events";
@@ -26,9 +34,11 @@ export {
   isCallEndReason,
   isUuidString,
   normalizeIncomingCallPayload,
+  normalizeOutgoingCallOptions,
   normalizeParticipant,
 } from "./payload";
 export { default as ExpoCallKitModule } from "./ExpoCallKitModule";
+export * from "./provider-router";
 
 /**
  * Reports an incoming call to the OS so the system ring UI appears.
@@ -59,7 +69,7 @@ export async function startOutgoingCall(
 ): Promise<string> {
   return ExpoCallKitModule.startOutgoingCall(
     normalizeParticipant(recipient, "recipient"),
-    options,
+    normalizeOutgoingCallOptions(options),
   );
 }
 
@@ -75,7 +85,8 @@ export async function reportOutgoingCallConnected(
 /**
  * Completes a pending answer. Call this after `onCallAnswered` once your
  * media layer has joined the call; on iOS this fulfills the held system
- * answer action. A no-op if the request already timed out.
+ * answer action, while Android completes the waiting Telecom callback or app
+ * answer transaction. A no-op if the request already timed out.
  */
 export async function answerAcknowledged(requestId: string): Promise<void> {
   return ExpoCallKitModule.answerAcknowledged(
@@ -128,6 +139,59 @@ export async function setOnHold(
   return ExpoCallKitModule.setOnHold(assertUuid(callId, "callId"), onHold);
 }
 
+/**
+ * Returns the current OS-owned call audio route and the routes that may be
+ * selected. Capability flags stay false until CallKit/Core-Telecom activates
+ * call audio.
+ */
+export async function getAudioRouteState(): Promise<AudioRouteState> {
+  return ExpoCallKitModule.getAudioRouteState();
+}
+
+/**
+ * Requests one of the opaque route ids returned by `getAudioRouteState` or
+ * `onAudioRouteChanged`. The call id prevents a stale in-call screen from
+ * changing a newer call.
+ */
+export async function selectAudioRoute(
+  callId: string,
+  routeId: string,
+): Promise<void> {
+  if (typeof routeId !== "string" || routeId.trim().length === 0) {
+    throw new CallKitValidationError("routeId must be a non-empty string");
+  }
+  return ExpoCallKitModule.selectAudioRoute(
+    assertUuid(callId, "callId"),
+    routeId,
+  );
+}
+
+/**
+ * Temporarily overrides iOS call output to the built-in speaker. Passing false
+ * clears the override and lets iOS choose its normal route. Android callers
+ * should select the speaker/earpiece endpoint from `availableRoutes` instead.
+ */
+export async function setSpeakerEnabled(
+  callId: string,
+  enabled: boolean,
+): Promise<void> {
+  return ExpoCallKitModule.setSpeakerEnabled(
+    assertUuid(callId, "callId"),
+    enabled,
+  );
+}
+
+/**
+ * Acknowledges a private in-call event without leaking a tone through
+ * speakerphone. Receiver, wired, Bluetooth, and car routes get a short tone;
+ * speaker/unknown routes return `haptic` so the app can vibrate instead.
+ */
+export async function playCallFeedback(
+  callId: string,
+): Promise<CallFeedbackMode> {
+  return ExpoCallKitModule.playCallFeedback(assertUuid(callId, "callId"));
+}
+
 /** Returns the current call session, or null when idle. */
 export async function getActiveCall(): Promise<CallSession | null> {
   return ExpoCallKitModule.getActiveCall();
@@ -172,4 +236,72 @@ export function addCallKitListener<EventName extends keyof ExpoCallKitEvents>(
   listener: ExpoCallKitEvents[EventName],
 ): EventSubscription {
   return ExpoCallKitModule.addListener(eventName, listener);
+}
+
+/**
+ * Binds one or more app-owned media/signaling providers to the native call
+ * lifecycle. The returned subscription removes every listener atomically.
+ *
+ * Selection is fail-closed: exactly one adapter must match each incoming call
+ * before the OS answer is acknowledged. No provider SDK becomes a dependency
+ * of this package.
+ */
+export function bindCallProviderAdapters(
+  adapters: readonly CallProviderAdapter[],
+  options: CallProviderRouterOptions = {},
+): EventSubscription {
+  const router = new CallProviderRouter(adapters, options);
+  const subscriptions: EventSubscription[] = [];
+  try {
+    // Register sequentially so a bridge error can roll back every listener
+    // that was already installed. Array literals abandon those subscriptions
+    // when a later expression throws, causing duplicate answer/end handling
+    // if the consuming app retries initialization.
+    subscriptions.push(addCallKitListener("onIncomingCall", router.onIncoming));
+    subscriptions.push(
+      addCallKitListener("onCallAnswered", (event) => {
+        router.onAnswered(event, {
+          acknowledge: answerAcknowledged,
+          fail: answerFailed,
+        });
+      }),
+    );
+    subscriptions.push(addCallKitListener("onCallEnded", router.onEnded));
+    subscriptions.push(
+      addCallKitListener("onOutgoingCallStarted", router.onOutgoingStarted),
+    );
+    subscriptions.push(
+      addCallKitListener("onMuteChanged", router.onMuteChanged),
+    );
+    subscriptions.push(
+      addCallKitListener("onHoldChanged", router.onHoldChanged),
+    );
+    subscriptions.push(addCallKitListener("onDtmf", router.onDtmf));
+    subscriptions.push(
+      addCallKitListener("onAudioSessionActivated", router.onAudioActivated),
+    );
+    subscriptions.push(
+      addCallKitListener(
+        "onAudioSessionDeactivated",
+        router.onAudioDeactivated,
+      ),
+    );
+  } catch (error) {
+    subscriptions.reverse().forEach((subscription) => {
+      try {
+        subscription.remove();
+      } catch {
+        // Preserve the original registration error; cleanup remains best effort.
+      }
+    });
+    router.clear();
+    throw error;
+  }
+
+  return {
+    remove() {
+      subscriptions.forEach((subscription) => subscription.remove());
+      router.clear();
+    },
+  };
 }

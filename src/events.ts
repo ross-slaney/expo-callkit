@@ -14,6 +14,7 @@ export const CALL_EVENTS = {
   dtmf: "onDtmf",
   audioSessionActivated: "onAudioSessionActivated",
   audioSessionDeactivated: "onAudioSessionDeactivated",
+  audioRouteChanged: "onAudioRouteChanged",
   voipTokenUpdated: "onVoipTokenUpdated",
 } as const satisfies Record<string, keyof ExpoCallKitEvents>;
 

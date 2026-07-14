@@ -13,8 +13,8 @@ final class CallCenter: NSObject {
   let provider: CXProvider
   private let transactionController = CXCallController()
 
-  private let stateLock = NSLock()
-  private var calls: [UUID: ActiveCall] = [:]
+  private let calls = SingleCallRegistry<ActiveCall>()
+  private let timeoutLock = NSLock()
   private var ringTimeouts: [UUID: Task<Void, Never>] = [:]
 
   private override init() {
@@ -39,40 +39,26 @@ final class CallCenter: NSObject {
   // MARK: - Registry
 
   func call(withId id: UUID) -> ActiveCall? {
-    stateLock.lock()
-    defer { stateLock.unlock() }
-    return calls[id]
+    calls.value(for: id)
   }
 
   func firstCall() -> ActiveCall? {
-    stateLock.lock()
-    defer { stateLock.unlock() }
-    return calls.values.first
+    calls.first()
   }
 
-  func insertCall(_ call: ActiveCall) {
-    stateLock.lock()
-    calls[call.id] = call
-    stateLock.unlock()
+  @discardableResult
+  func reserveIfIdle(_ call: ActiveCall) -> Bool {
+    calls.reserveIfIdle(id: call.id, value: call)
   }
 
   @discardableResult
   func mutateCall(_ id: UUID, _ transform: (inout ActiveCall) -> Void) -> ActiveCall? {
-    stateLock.lock()
-    defer { stateLock.unlock() }
-    guard var call = calls[id] else {
-      return nil
-    }
-    transform(&call)
-    calls[id] = call
-    return call
+    calls.mutate(id, transform)
   }
 
   @discardableResult
   func removeCall(_ id: UUID) -> ActiveCall? {
-    stateLock.lock()
-    defer { stateLock.unlock() }
-    return calls.removeValue(forKey: id)
+    calls.remove(id)
   }
 
   /// TS `CallSession` snapshot of the current call, or nil when idle.
@@ -84,11 +70,12 @@ final class CallCenter: NSObject {
 
   /// JS-initiated report (signaling discovered a call without a VoIP push).
   func reportIncomingCallFromJS(_ payload: RingPayload) async throws -> UUID {
-    guard firstCall() == nil else {
+    let call = makeIncomingCall(payload)
+    guard reserveIfIdle(call) else {
       throw CallExistsException()
     }
     return try await withCheckedThrowingContinuation { continuation in
-      reportIncomingCall(payload) { result in
+      reportReservedIncomingCall(call, payload: payload) { result in
         switch result {
         case .success(let id):
           continuation.resume(returning: id)
@@ -102,7 +89,8 @@ final class CallCenter: NSObject {
   /// Push-initiated report. Never throws: if busy, the push is still
   /// reported (Apple rule) and immediately rung out.
   func reportIncomingCallFromPush(_ payload: RingPayload, completion: @escaping () -> Void) {
-    guard firstCall() == nil else {
+    let call = makeIncomingCall(payload)
+    guard reserveIfIdle(call) else {
       reportDiscardedPush(
         callerName: payload.caller.displayName,
         reason: .unanswered,
@@ -110,20 +98,35 @@ final class CallCenter: NSObject {
       )
       return
     }
-    reportIncomingCall(payload) { _ in
+    reportReservedIncomingCall(call, payload: payload) { _ in
       completion()
     }
   }
 
-  /// Callback-based core report path. `reportNewIncomingCall` is invoked
-  /// synchronously — Swift-concurrency hops are avoided here on purpose so
-  /// the CallKit report always lands before a push completion handler runs,
-  /// even when the app was just launched from a killed state.
-  func reportIncomingCall(
-    _ payload: RingPayload,
+  private func makeIncomingCall(_ payload: RingPayload) -> ActiveCall {
+    ActiveCall(
+      id: payload.callId ?? UUID(),
+      origin: .incoming,
+      status: .ringing,
+      remoteParty: payload.caller,
+      serverCallId: payload.serverCallId,
+      providerKey: payload.provider,
+      metadata: payload.metadata,
+      hasVideo: payload.hasVideo,
+      incomingPayload: payload
+    )
+  }
+
+  /// Reports a call that already owns the single admission slot.
+  /// `reportNewIncomingCall` is invoked synchronously — Swift-concurrency
+  /// hops are avoided so the CallKit report lands before a VoIP push
+  /// completion handler runs, even on a killed-state launch.
+  private func reportReservedIncomingCall(
+    _ call: ActiveCall,
+    payload: RingPayload,
     completion: @escaping (Result<UUID, Error>) -> Void
   ) {
-    let id = UUID()
+    let id = call.id
 
     AudioSessionCoordinator.shared.prewarm()
 
@@ -141,25 +144,32 @@ final class CallCenter: NSObject {
     provider.reportNewIncomingCall(with: id, update: update) { error in
       if let error {
         NSLog("[ExpoCallKit] reportNewIncomingCall failed: \(error.localizedDescription)")
+        self.removeCall(id)
         completion(.failure(error))
         return
       }
 
-      let call = ActiveCall(
-        id: id,
-        origin: .incoming,
-        status: .ringing,
-        remoteParty: payload.caller,
-        serverCallId: payload.serverCallId,
-        metadata: payload.metadata,
-        hasVideo: payload.hasVideo
-      )
-      self.insertCall(call)
+      // A provider reset or end can remove the reservation before CallKit's
+      // completion arrives. Never resurrect or emit a call that already lost
+      // ownership of the slot.
+      guard self.call(withId: id) != nil else {
+        let cancellation = NSError(
+          domain: "dev.rossslaney.expocallkit",
+          code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "Incoming call admission was cancelled"]
+        )
+        completion(.failure(cancellation))
+        return
+      }
 
-      EventHub.shared.emit(CKEvent.incomingCall, [
+      var event: [String: Any] = [
         "callId": id.uuidString.lowercased(),
         "payload": payload.asDictionary(),
-      ])
+      ]
+      if let rawPushPayload = payload.rawPushPayload {
+        event["rawPushPayload"] = rawPushPayload
+      }
+      EventHub.shared.emit(CKEvent.incomingCall, event)
 
       self.scheduleRingTimeout(for: id, seconds: CallKitSetup.incomingTimeout)
       completion(.success(id))
@@ -185,29 +195,56 @@ final class CallCenter: NSObject {
     }
   }
 
+  /// Handles a provider terminal/missed-call VoIP push without presenting a
+  /// new ring. A not-yet-connected call with the same stable UUID is ended,
+  /// including the interval while an answer is attaching media. An already-
+  /// connected call is left alone because a late terminal push must never tear
+  /// down live media. A short-lived watchdog call still satisfies Apple's
+  /// report-per-PushKit-delivery requirement.
+  func handleTerminalPush(
+    callId: UUID?,
+    callerName: String?,
+    completion: @escaping () -> Void
+  ) {
+    if let callId, let existing = call(withId: callId),
+      existing.status.shouldEndForTerminalPush
+    {
+      concludeCall(callId, reason: .unanswered, reportToProvider: true)
+    }
+    reportDiscardedPush(
+      callerName: callerName,
+      reason: .remoteEnded,
+      completion: completion
+    )
+  }
+
   // MARK: - Outgoing calls
 
   func startOutgoingCall(
     recipient: Participant,
+    providerKey: String?,
     hasVideo: Bool,
     metadata: [String: Any]?
   ) async throws -> UUID {
-    guard firstCall() == nil else {
+    let id = UUID()
+    let normalizedProviderKey = providerKey.flatMap { value -> String? in
+      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      return trimmed.isEmpty ? nil : trimmed
+    }
+    let call = ActiveCall(
+      id: id,
+      origin: .outgoing,
+      status: .connecting,
+      remoteParty: recipient,
+      serverCallId: nil,
+      providerKey: normalizedProviderKey,
+      metadata: metadata,
+      hasVideo: hasVideo,
+      incomingPayload: nil
+    )
+    guard reserveIfIdle(call) else {
       throw CallExistsException()
     }
-
-    let id = UUID()
-    insertCall(
-      ActiveCall(
-        id: id,
-        origin: .outgoing,
-        status: .connecting,
-        remoteParty: recipient,
-        serverCallId: nil,
-        metadata: metadata,
-        hasVideo: hasVideo
-      )
-    )
 
     AudioSessionCoordinator.shared.prewarm()
 
@@ -237,6 +274,7 @@ final class CallCenter: NSObject {
       $0.status = .connected
       $0.connectedAt = now
     }
+    AudioSessionCoordinator.shared.callConnected(id)
   }
 
   // MARK: - Ending calls
@@ -266,10 +304,12 @@ final class CallCenter: NSObject {
   /// optionally informs CallKit, emits `onCallEnded`, removes the call.
   func concludeCall(_ id: UUID, reason: EndReason, reportToProvider: Bool) {
     cancelRingTimeout(for: id)
-    Task {
-      await PendingAnswers.shared.abandon(callId: id)
-    }
+    PendingAnswers.shared.abandon(callId: id)
 
+    guard call(withId: id) != nil else {
+      return
+    }
+    AudioSessionCoordinator.shared.callEnded(id)
     guard var ended = removeCall(id) else {
       return
     }
@@ -279,11 +319,15 @@ final class CallCenter: NSObject {
       provider.reportCall(with: id, endedAt: nil, reason: reason.cxReason)
     }
 
-    EventHub.shared.emit(CKEvent.callEnded, [
+    var event: [String: Any] = [
       "callId": id.uuidString.lowercased(),
       "session": ended.asSessionDictionary(),
       "reason": reason.rawValue,
-    ])
+    ]
+    if let rawPushPayload = ended.incomingPayload?.rawPushPayload {
+      event["rawPushPayload"] = rawPushPayload
+    }
+    EventHub.shared.emit(CKEvent.callEnded, event)
   }
 
   // MARK: - Mute / hold
@@ -328,23 +372,23 @@ final class CallCenter: NSObject {
       }
       self.concludeCall(id, reason: .unanswered, reportToProvider: true)
     }
-    stateLock.lock()
+    timeoutLock.lock()
     ringTimeouts[id] = task
-    stateLock.unlock()
+    timeoutLock.unlock()
   }
 
   func cancelRingTimeout(for id: UUID) {
-    stateLock.lock()
+    timeoutLock.lock()
     let task = ringTimeouts.removeValue(forKey: id)
-    stateLock.unlock()
+    timeoutLock.unlock()
     task?.cancel()
   }
 
   func cancelAllRingTimeouts() {
-    stateLock.lock()
+    timeoutLock.lock()
     let tasks = Array(ringTimeouts.values)
     ringTimeouts.removeAll()
-    stateLock.unlock()
+    timeoutLock.unlock()
     tasks.forEach { $0.cancel() }
   }
 

@@ -1,26 +1,6 @@
 import ExpoModulesCore
 import Foundation
 
-/// Event name constants shared with `src/events.ts` and the Android side.
-enum CKEvent {
-  static let incomingCall = "onIncomingCall"
-  static let callAnswered = "onCallAnswered"
-  static let callEnded = "onCallEnded"
-  static let outgoingCallStarted = "onOutgoingCallStarted"
-  static let muteChanged = "onMuteChanged"
-  static let holdChanged = "onHoldChanged"
-  static let dtmf = "onDtmf"
-  static let audioSessionActivated = "onAudioSessionActivated"
-  static let audioSessionDeactivated = "onAudioSessionDeactivated"
-  static let voipTokenUpdated = "onVoipTokenUpdated"
-
-  static let all: [String] = [
-    incomingCall, callAnswered, callEnded, outgoingCallStarted,
-    muteChanged, holdChanged, dtmf,
-    audioSessionActivated, audioSessionDeactivated, voipTokenUpdated,
-  ]
-}
-
 /// Bridges native call events to JS with per-event replay buffers.
 ///
 /// CallKit and PushKit routinely fire before the JS runtime has mounted any
@@ -43,7 +23,7 @@ final class EventHub {
   private weak var module: ExpoCallKitModule?
   private var observed: Set<String> = []
   private var buffers: [String: [Buffered]] = [:]
-  private let replayLimits: [String: Int]
+  private let replayLimits = EventReplayPolicy.limits
 
   /// Cached: `ISO8601DateFormatter` is expensive to allocate and thread-safe.
   private static let timestampFormatter: ISO8601DateFormatter = {
@@ -52,15 +32,7 @@ final class EventHub {
     return formatter
   }()
 
-  private init() {
-    replayLimits = [
-      CKEvent.incomingCall: 1,
-      CKEvent.callAnswered: 1,
-      CKEvent.callEnded: 1,
-      CKEvent.voipTokenUpdated: 1,
-      CKEvent.audioSessionActivated: 1,
-    ]
-  }
+  private init() {}
 
   /// Connects (or disconnects, with nil) the live Expo module instance.
   func attach(_ module: ExpoCallKitModule?) {

@@ -75,13 +75,6 @@ enum CallOrigin: String {
   case outgoing
 }
 
-enum CallStatus: String {
-  case ringing
-  case connecting
-  case connected
-  case ended
-}
-
 enum EndReason: String {
   case failed
   case remoteEnded
@@ -112,8 +105,10 @@ struct ActiveCall {
   var status: CallStatus
   let remoteParty: Participant
   let serverCallId: String?
+  let providerKey: String?
   let metadata: [String: Any]?
   let hasVideo: Bool
+  let incomingPayload: RingPayload?
   var isMuted: Bool = false
   var isOnHold: Bool = false
   var connectedAt: Date?
@@ -140,7 +135,11 @@ struct ActiveCall {
       dict["recipient"] = remoteParty.asDictionary()
     }
     if let serverCallId { dict["serverCallId"] = serverCallId }
+    if let providerKey { dict["provider"] = providerKey }
     if let metadata { dict["metadata"] = metadata }
+    if let rawPushPayload = incomingPayload?.rawPushPayload {
+      dict["rawPushPayload"] = rawPushPayload
+    }
     if let connectedAt {
       dict["connectedAt"] = Self.timestampFormatter.string(from: connectedAt)
     }
@@ -154,9 +153,13 @@ struct ActiveCall {
 struct RingPayload {
   let eventId: String
   let serverCallId: String
+  let provider: String?
   let caller: Participant
   let hasVideo: Bool
   let metadata: [String: Any]?
+  let callId: UUID?
+  let rawPushPayload: [String: Any]?
+  let isTerminalPush: Bool
 
   func asDictionary() -> [String: Any] {
     var dict: [String: Any] = [
@@ -165,17 +168,34 @@ struct RingPayload {
       "caller": caller.asDictionary(),
       "hasVideo": hasVideo,
     ]
+    if let provider { dict["provider"] = provider }
     if let metadata { dict["metadata"] = metadata }
     return dict
   }
 
-  /// Extracts a payload from a VoIP push envelope. The push body must carry
-  /// the call description under the top-level key `"incomingCall"`.
+  /// Extracts a provider push into the package's canonical incoming-call
+  /// contract. The original JSON-safe body is retained for the consumer's
+  /// signaling/media adapter and is never logged by this module.
   static func fromPushEnvelope(_ envelope: [AnyHashable: Any]) -> RingPayload? {
-    guard let inner = envelope["incomingCall"] as? [AnyHashable: Any] else {
+    guard let normalized = PushPayloadNormalizer.normalize(envelope) else {
       return nil
     }
-    return fromFields(inner)
+    return RingPayload(
+      eventId: normalized.eventId,
+      serverCallId: normalized.serverCallId,
+      provider: normalized.provider,
+      caller: Participant(
+        id: normalized.callerId,
+        displayName: normalized.callerName,
+        phoneNumber: normalized.callerNumber,
+        email: normalized.callerEmail
+      ),
+      hasVideo: normalized.hasVideo,
+      metadata: normalized.metadata,
+      callId: normalized.callId,
+      rawPushPayload: normalized.rawPayload,
+      isTerminalPush: normalized.isTerminal
+    )
   }
 
   /// Validates raw fields. Requires non-empty `eventId`, `serverCallId`, and
@@ -193,6 +213,7 @@ struct RingPayload {
     return RingPayload(
       eventId: eventId,
       serverCallId: serverCallId,
+      provider: nonEmptyString(fields["provider"]),
       caller: Participant(
         id: callerId,
         displayName: nonEmptyString(callerFields["displayName"]),
@@ -200,7 +221,10 @@ struct RingPayload {
         email: nonEmptyString(callerFields["email"])
       ),
       hasVideo: fields["hasVideo"] as? Bool ?? false,
-      metadata: fields["metadata"] as? [String: Any]
+      metadata: fields["metadata"] as? [String: Any],
+      callId: nil,
+      rawPushPayload: nil,
+      isTerminalPush: false
     )
   }
 

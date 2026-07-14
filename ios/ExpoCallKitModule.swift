@@ -34,6 +34,9 @@ struct IncomingCallRecord: Record {
   var serverCallId: String = ""
 
   @Field
+  var provider: String?
+
+  @Field
   var caller: ParticipantRecord = ParticipantRecord()
 
   @Field
@@ -49,14 +52,21 @@ struct IncomingCallRecord: Record {
     return RingPayload(
       eventId: eventId,
       serverCallId: serverCallId,
+      provider: provider,
       caller: caller.asParticipant(),
       hasVideo: hasVideo,
-      metadata: metadata
+      metadata: metadata,
+      callId: nil,
+      rawPushPayload: nil,
+      isTerminalPush: false
     )
   }
 }
 
 struct OutgoingCallOptionsRecord: Record {
+  @Field
+  var provider: String?
+
   @Field
   var hasVideo: Bool = false
 
@@ -80,6 +90,7 @@ public final class ExpoCallKitModule: Module {
       CKEvent.dtmf,
       CKEvent.audioSessionActivated,
       CKEvent.audioSessionDeactivated,
+      CKEvent.audioRouteChanged,
       CKEvent.voipTokenUpdated
     )
 
@@ -156,6 +167,13 @@ public final class ExpoCallKitModule: Module {
       EventHub.shared.stopObserving(CKEvent.audioSessionDeactivated)
     }
 
+    OnStartObserving(CKEvent.audioRouteChanged) {
+      EventHub.shared.startObserving(CKEvent.audioRouteChanged)
+    }
+    OnStopObserving(CKEvent.audioRouteChanged) {
+      EventHub.shared.stopObserving(CKEvent.audioRouteChanged)
+    }
+
     OnStartObserving(CKEvent.voipTokenUpdated) {
       EventHub.shared.startObserving(CKEvent.voipTokenUpdated)
     }
@@ -175,6 +193,7 @@ public final class ExpoCallKitModule: Module {
       (recipient: ParticipantRecord, options: OutgoingCallOptionsRecord?) -> String in
       let id = try await CallCenter.shared.startOutgoingCall(
         recipient: recipient.asParticipant(),
+        providerKey: options?.provider,
         hasVideo: options?.hasVideo ?? false,
         metadata: options?.metadata
       )
@@ -187,11 +206,11 @@ public final class ExpoCallKitModule: Module {
 
     AsyncFunction("answerAcknowledged") { (requestId: String) in
       // No-op when the request already resolved (raced a timeout).
-      _ = await PendingAnswers.shared.acknowledge(try Self.parseUuid(requestId))
+      _ = PendingAnswers.shared.acknowledge(try Self.parseUuid(requestId))
     }
 
     AsyncFunction("answerFailed") { (requestId: String) in
-      _ = await PendingAnswers.shared.fail(try Self.parseUuid(requestId))
+      _ = PendingAnswers.shared.fail(try Self.parseUuid(requestId))
     }
 
     AsyncFunction("endCall") { (callId: String) in
@@ -232,6 +251,30 @@ public final class ExpoCallKitModule: Module {
 
     Function("configureAudioSession") {
       AudioSessionCoordinator.shared.prewarm()
+    }
+
+    AsyncFunction("getAudioRouteState") { () -> [String: Any] in
+      AudioSessionCoordinator.shared.routeState()
+    }
+
+    AsyncFunction("selectAudioRoute") { (callId: String, routeId: String) in
+      try AudioSessionCoordinator.shared.selectRoute(
+        callId: try Self.parseUuid(callId),
+        routeId: routeId
+      )
+    }
+
+    AsyncFunction("setSpeakerEnabled") { (callId: String, enabled: Bool) in
+      try AudioSessionCoordinator.shared.setSpeakerEnabled(
+        callId: try Self.parseUuid(callId),
+        enabled: enabled
+      )
+    }
+
+    AsyncFunction("playCallFeedback") { (callId: String) -> String in
+      try AudioSessionCoordinator.shared.playCallFeedback(
+        callId: try Self.parseUuid(callId)
+      )
     }
 
     AsyncFunction("requestPermissions") { () -> [String: String] in
