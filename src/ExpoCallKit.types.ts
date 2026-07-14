@@ -121,6 +121,8 @@ export type CallEndedEvent = {
 
 export type OutgoingCallStartedEvent = {
   callId: string;
+  /** Canonical native session, including the app-selected provider key. */
+  session: CallSession;
   meta: EventMeta;
 };
 
@@ -216,6 +218,12 @@ export type CallKitPermissions = {
 };
 
 export type OutgoingCallOptions = {
+  /**
+   * Stable media/signaling provider key for multi-provider apps (for example
+   * `acs` or `telnyx`). The provider router uses this to bind every native
+   * mute, hold, DTMF, audio, and end action to exactly one app adapter.
+   */
+  provider?: string;
   hasVideo?: boolean;
   metadata?: Record<string, unknown>;
 };

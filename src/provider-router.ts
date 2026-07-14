@@ -9,6 +9,7 @@ import type {
   IncomingCallEvent,
   IncomingCallPayload,
   MuteChangedEvent,
+  OutgoingCallStartedEvent,
 } from "./ExpoCallKit.types";
 
 /** Provider-neutral context passed to a consuming app's media adapter. */
@@ -164,6 +165,28 @@ export class CallProviderRouter {
         });
       this.preparationByCall.set(event.callId, preparation);
       preparation.catch(() => {});
+    } catch (error) {
+      this.notify(error, "select", context);
+    }
+  };
+
+  /**
+   * Binds an app-started native call to its media adapter before CallKit or
+   * Telecom begins sending audio, mute, hold, DTMF, and end actions.
+   */
+  onOutgoingStarted = (event: OutgoingCallStartedEvent): void => {
+    this.lifecycleToken(event.callId);
+    const context = this.mergeContext(event.callId, {
+      callId: event.callId,
+      provider: event.session.provider,
+      serverCallId: event.session.serverCallId,
+      session: event.session,
+      rawPushPayload: event.session.rawPushPayload,
+      eventMeta: event.meta,
+    });
+    try {
+      this.resolve(context);
+      this.activeCallId = event.callId;
     } catch (error) {
       this.notify(error, "select", context);
     }

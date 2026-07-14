@@ -2,6 +2,7 @@ import type {
   CallAnsweredEvent,
   CallEndedEvent,
   IncomingCallEvent,
+  OutgoingCallStartedEvent,
 } from "../ExpoCallKit.types";
 import {
   CallProviderRouter,
@@ -51,6 +52,37 @@ function ended(provider = "telnyx"): CallEndedEvent {
   };
 }
 
+function outgoing(provider = "telnyx"): OutgoingCallStartedEvent {
+  return {
+    callId: "call-2",
+    session: {
+      id: "call-2",
+      origin: "outgoing",
+      status: "connecting",
+      provider,
+      recipient: {
+        id: "+15550102",
+        displayName: "Jane",
+        phoneNumber: "+15550102",
+      },
+      metadata: { bookingId: "booking-2" },
+      isMuted: false,
+      isOnHold: false,
+    },
+    meta,
+  };
+}
+
+function outgoingEnded(provider = "telnyx"): CallEndedEvent {
+  const event = outgoing(provider);
+  return {
+    callId: event.callId,
+    reason: "local",
+    session: { ...event.session, status: "ended" },
+    meta,
+  };
+}
+
 type MockAdapter = CallProviderAdapter & {
   matches: jest.Mock;
   prepareIncoming: jest.Mock;
@@ -84,6 +116,38 @@ async function flush(): Promise<void> {
 }
 
 describe("CallProviderRouter", () => {
+  it("routes the complete outgoing lifecycle using the canonical provider", async () => {
+    const acs = adapter("acs");
+    const telnyx = adapter("telnyx");
+    const router = new CallProviderRouter([acs, telnyx]);
+
+    router.onOutgoingStarted(outgoing());
+    router.onMuteChanged({ callId: "call-2", isMuted: true, meta });
+    router.onHoldChanged({ callId: "call-2", isOnHold: true, meta });
+    router.onDtmf({ callId: "call-2", digits: "9#", meta });
+    router.onAudioActivated();
+    await flush();
+    router.onAudioDeactivated();
+    router.onEnded(outgoingEnded());
+    await flush();
+
+    expect(acs.endCall).not.toHaveBeenCalled();
+    expect(telnyx.answerIncoming).not.toHaveBeenCalled();
+    expect(telnyx.setMuted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callId: "call-2",
+        provider: "telnyx",
+        session: expect.objectContaining({ origin: "outgoing" }),
+      }),
+      true,
+    );
+    expect(telnyx.setOnHold).toHaveBeenCalledWith(expect.any(Object), true);
+    expect(telnyx.sendDtmf).toHaveBeenCalledWith(expect.any(Object), "9#");
+    expect(telnyx.activateAudio).toHaveBeenCalledTimes(1);
+    expect(telnyx.deactivateAudio).toHaveBeenCalledTimes(1);
+    expect(telnyx.endCall).toHaveBeenCalledWith(expect.any(Object), "local");
+  });
+
   it("routes a complete lifecycle to exactly one of two providers", async () => {
     const acs = adapter("acs");
     const telnyx = adapter("telnyx");

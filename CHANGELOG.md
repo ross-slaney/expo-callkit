@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Outgoing multi-provider calls now preserve the canonical `provider` through
+  native iOS/Android sessions and the `onOutgoingCallStarted` event. The shared
+  adapter router binds at call start so audio activation, mute, hold, DTMF, and
+  hangup are delivered to exactly the selected media provider.
+
 - iOS: durably restore the last valid PushKit token across cold launches while
   binding the cache to the signed build's APNs environment. Development and
   production tokens can never be restored across environments, and the old

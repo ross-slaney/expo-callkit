@@ -18,6 +18,7 @@ import {
   isCallEndReason,
   CallKitValidationError,
   normalizeIncomingCallPayload,
+  normalizeOutgoingCallOptions,
   normalizeParticipant,
 } from "./payload";
 import {
@@ -33,6 +34,7 @@ export {
   isCallEndReason,
   isUuidString,
   normalizeIncomingCallPayload,
+  normalizeOutgoingCallOptions,
   normalizeParticipant,
 } from "./payload";
 export { default as ExpoCallKitModule } from "./ExpoCallKitModule";
@@ -67,7 +69,7 @@ export async function startOutgoingCall(
 ): Promise<string> {
   return ExpoCallKitModule.startOutgoingCall(
     normalizeParticipant(recipient, "recipient"),
-    options,
+    normalizeOutgoingCallOptions(options),
   );
 }
 
@@ -265,6 +267,9 @@ export function bindCallProviderAdapters(
       }),
     );
     subscriptions.push(addCallKitListener("onCallEnded", router.onEnded));
+    subscriptions.push(
+      addCallKitListener("onOutgoingCallStarted", router.onOutgoingStarted),
+    );
     subscriptions.push(
       addCallKitListener("onMuteChanged", router.onMuteChanged),
     );

@@ -65,6 +65,9 @@ struct IncomingCallRecord: Record {
 
 struct OutgoingCallOptionsRecord: Record {
   @Field
+  var provider: String?
+
+  @Field
   var hasVideo: Bool = false
 
   @Field
@@ -190,6 +193,7 @@ public final class ExpoCallKitModule: Module {
       (recipient: ParticipantRecord, options: OutgoingCallOptionsRecord?) -> String in
       let id = try await CallCenter.shared.startOutgoingCall(
         recipient: recipient.asParticipant(),
+        providerKey: options?.provider,
         hasVideo: options?.hasVideo ?? false,
         metadata: options?.metadata
       )

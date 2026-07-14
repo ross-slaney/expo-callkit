@@ -143,6 +143,7 @@ class ExpoCallKitModule : Module() {
             @Suppress("UNCHECKED_CAST")
             CallEngine.startOutgoingCall(
                 recipient = participant,
+                provider = (options?.get("provider") as? String)?.trim()?.takeIf { it.isNotEmpty() },
                 hasVideo = options?.get("hasVideo") as? Boolean ?: false,
                 metadata = options?.get("metadata") as? Map<String, Any?>,
             ).toString()

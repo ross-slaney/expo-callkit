@@ -280,7 +280,7 @@ identifies, or initializes either SDK.
 ```ts
 const callId = await CallKit.startOutgoingCall(
   { id: "acs:8:abc", displayName: "Jane Doe", phoneNumber: "+15550100" },
-  { metadata: { bookingId: 42 } }
+  { provider: "acs", metadata: { bookingId: 42 } }
 );
 // ... connect media via your calling SDK, then:
 await CallKit.reportOutgoingCallConnected(callId);
@@ -395,7 +395,7 @@ All call ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXI
 | Function                              | Returns                        | Notes                                                |
 | ------------------------------------- | ------------------------------ | ---------------------------------------------------- |
 | `reportIncomingCall(payload)`         | `Promise<callId>`              | Ring the system UI. Android entry point for pushes   |
-| `startOutgoingCall(recipient, opts?)` | `Promise<callId>`              | `opts: { hasVideo?, metadata? }`                     |
+| `startOutgoingCall(recipient, opts?)` | `Promise<callId>`              | `opts: { provider?, hasVideo?, metadata? }`          |
 | `reportOutgoingCallConnected(callId)` | `Promise<void>`                | Media established                                    |
 | `answerAcknowledged(requestId)`       | `Promise<void>`                | Fulfills the held answer action; no-op if timed out  |
 | `answerFailed(requestId)`             | `Promise<void>`                | Fails the answer; OS ends the call                   |
@@ -420,7 +420,7 @@ All call ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXI
 | `onIncomingCall`            | `{ callId, payload, rawPushPayload? }`                    |
 | `onCallAnswered`            | `{ callId, requestId, payload?, rawPushPayload? }`        |
 | `onCallEnded`               | `{ callId, session, reason, rawPushPayload? }`            |
-| `onOutgoingCallStarted`     | `{ callId }`                                              |
+| `onOutgoingCallStarted`     | `{ callId, session }`                                     |
 | `onMuteChanged`             | `{ callId, isMuted }`                                     |
 | `onHoldChanged`             | `{ callId, isOnHold }`                                    |
 | `onDtmf`                    | `{ callId, digits }` (iOS system UI only)                 |

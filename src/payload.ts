@@ -2,6 +2,7 @@ import type {
   CallEndReason,
   CallParticipant,
   IncomingCallPayload,
+  OutgoingCallOptions,
 } from "./ExpoCallKit.types";
 
 const END_REASONS: readonly CallEndReason[] = [
@@ -127,6 +128,35 @@ export function normalizeIncomingCallPayload(
     payload.metadata = input.metadata;
   }
   return payload;
+}
+
+/**
+ * Validates and normalizes outgoing-call options before they cross the native
+ * bridge. A canonical provider key is required by multi-provider apps so the
+ * lifecycle router can bind system actions to the correct media adapter.
+ */
+export function normalizeOutgoingCallOptions(
+  input: unknown = {},
+): OutgoingCallOptions {
+  if (!isPlainObject(input)) {
+    throw new CallKitValidationError("outgoing call options must be an object");
+  }
+  const options: OutgoingCallOptions = {};
+  const provider = optionalString(input, "provider", "options");
+  if (provider !== undefined) options.provider = provider;
+  if (input.hasVideo !== undefined) {
+    if (typeof input.hasVideo !== "boolean") {
+      throw new CallKitValidationError("options.hasVideo must be a boolean");
+    }
+    options.hasVideo = input.hasVideo;
+  }
+  if (input.metadata !== undefined) {
+    if (!isPlainObject(input.metadata)) {
+      throw new CallKitValidationError("options.metadata must be an object");
+    }
+    options.metadata = input.metadata;
+  }
+  return options;
 }
 
 /** Asserts `callId`/`requestId` style arguments are non-empty UUID strings. */

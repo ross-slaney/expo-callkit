@@ -401,6 +401,7 @@ object CallEngine {
 
     fun startOutgoingCall(
         recipient: Participant,
+        provider: String?,
         hasVideo: Boolean,
         metadata: Map<String, Any?>?,
     ): UUID {
@@ -417,6 +418,7 @@ object CallEngine {
                 origin = CallOrigin.OUTGOING,
                 status = CallStatus.CONNECTING,
                 remoteParty = recipient,
+                provider = provider,
                 metadata = metadata,
                 hasVideo = hasVideo,
             )
@@ -435,7 +437,11 @@ object CallEngine {
 
         controller.job = runTelecomSession(id, attributes, controller.lane, onAnswer = { _ -> }) {
             CallNotifications.showOutgoing(app, id, recipient.displayName)
-            EventHub.emit(CKEvents.OUTGOING_CALL_STARTED, mapOf("callId" to id.toString()))
+            val session = calls[id]?.toSessionMap() ?: return@runTelecomSession
+            EventHub.emit(
+                CKEvents.OUTGOING_CALL_STARTED,
+                mapOf("callId" to id.toString(), "session" to session),
+            )
             startRingTimeout(id, outgoingTimeoutMs)
         }
 

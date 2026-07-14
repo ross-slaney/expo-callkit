@@ -38,7 +38,7 @@ describe("bindCallProviderAdapters", () => {
   });
 
   it("removes every successfully registered listener", () => {
-    const removers = Array.from({ length: 8 }, () => jest.fn());
+    const removers = Array.from({ length: 9 }, () => jest.fn());
     mockNativeModule.addListener.mockImplementation(() => {
       const index = mockNativeModule.addListener.mock.calls.length - 1;
       return { remove: removers[index] };
@@ -47,7 +47,7 @@ describe("bindCallProviderAdapters", () => {
     const subscription = bindCallProviderAdapters([adapter]);
     subscription.remove();
 
-    expect(mockNativeModule.addListener).toHaveBeenCalledTimes(8);
+    expect(mockNativeModule.addListener).toHaveBeenCalledTimes(9);
     removers.forEach((remove) => expect(remove).toHaveBeenCalledTimes(1));
   });
 });

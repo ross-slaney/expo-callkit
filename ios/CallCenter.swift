@@ -222,17 +222,22 @@ final class CallCenter: NSObject {
 
   func startOutgoingCall(
     recipient: Participant,
+    providerKey: String?,
     hasVideo: Bool,
     metadata: [String: Any]?
   ) async throws -> UUID {
     let id = UUID()
+    let normalizedProviderKey = providerKey.flatMap { value -> String? in
+      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      return trimmed.isEmpty ? nil : trimmed
+    }
     let call = ActiveCall(
       id: id,
       origin: .outgoing,
       status: .connecting,
       remoteParty: recipient,
       serverCallId: nil,
-      providerKey: nil,
+      providerKey: normalizedProviderKey,
       metadata: metadata,
       hasVideo: hasVideo,
       incomingPayload: nil

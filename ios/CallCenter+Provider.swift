@@ -16,7 +16,7 @@ extension CallCenter: CXProviderDelegate {
 
   public func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
     let id = action.callUUID
-    guard call(withId: id) != nil else {
+    guard let currentCall = call(withId: id) else {
       action.fail()
       return
     }
@@ -26,6 +26,7 @@ extension CallCenter: CXProviderDelegate {
 
     EventHub.shared.emit(CKEvent.outgoingCallStarted, [
       "callId": id.uuidString.lowercased(),
+      "session": currentCall.asSessionDictionary(),
     ])
 
     scheduleRingTimeout(for: id, seconds: CallKitSetup.outgoingTimeout)
