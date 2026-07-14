@@ -16,6 +16,8 @@ final class AudioSessionCoordinator: NSObject {
 
   private let lifecycleLock = NSRecursiveLock()
   private let ownership = AudioRouteOwnership()
+  private var feedbackPlayer: AVAudioPlayer?
+  private static let feedbackToneData = makeFeedbackToneData()
 
   private override init() {
     super.init()
@@ -187,6 +189,37 @@ final class AudioSessionCoordinator: NSObject {
     emitRouteChanged()
   }
 
+  /// Plays a low-volume cue only on private call routes. Speakerphone and an
+  /// indeterminate route return `haptic`, allowing JS to vibrate without an
+  /// acoustic chirp that the remote party could hear through the microphone.
+  func playCallFeedback(callId: UUID) throws -> String {
+    guard CallCenter.shared.call(withId: callId) != nil else {
+      throw NoSuchCallException(callId.uuidString.lowercased())
+    }
+    guard let mode = try ownership.withOwnedCall(callId, {
+      let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+      guard !outputs.isEmpty,
+            !outputs.contains(where: { $0.portType == .builtInSpeaker })
+      else {
+        return "haptic"
+      }
+
+      do {
+        let player = try AVAudioPlayer(data: Self.feedbackToneData)
+        player.volume = 0.22
+        player.prepareToPlay()
+        guard player.play() else { return "haptic" }
+        feedbackPlayer = player
+        return "audio"
+      } catch {
+        return "haptic"
+      }
+    }) else {
+      throw AudioSessionInactiveException()
+    }
+    return mode
+  }
+
   @objc private func routeDidChange(_ notification: Notification) {
     guard ownership.snapshot().callId != nil else {
       return
@@ -287,6 +320,47 @@ final class AudioSessionCoordinator: NSObject {
       }
       return seen.insert(id).inserted
     }
+  }
+
+  private static func makeFeedbackToneData() -> Data {
+    let sampleRate: UInt32 = 16_000
+    let frameCount = 1_600 // 100 ms
+    let dataSize = UInt32(frameCount * MemoryLayout<Int16>.size)
+    var data = Data()
+
+    func append(_ text: String) {
+      data.append(contentsOf: text.utf8)
+    }
+    func appendUInt16(_ value: UInt16) {
+      var little = value.littleEndian
+      Swift.withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
+    }
+    func appendUInt32(_ value: UInt32) {
+      var little = value.littleEndian
+      Swift.withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
+    }
+
+    append("RIFF")
+    appendUInt32(36 + dataSize)
+    append("WAVEfmt ")
+    appendUInt32(16)
+    appendUInt16(1) // PCM
+    appendUInt16(1) // mono
+    appendUInt32(sampleRate)
+    appendUInt32(sampleRate * 2)
+    appendUInt16(2)
+    appendUInt16(16)
+    append("data")
+    appendUInt32(dataSize)
+
+    for frame in 0..<frameCount {
+      let progress = Double(frame) / Double(frameCount)
+      let envelope = min(1, progress / 0.12, (1 - progress) / 0.18)
+      let wave = sin(2 * Double.pi * 880 * Double(frame) / Double(sampleRate))
+      var sample = Int16(wave * envelope * 0.16 * Double(Int16.max)).littleEndian
+      Swift.withUnsafeBytes(of: &sample) { data.append(contentsOf: $0) }
+    }
+    return data
   }
 }
 

@@ -229,6 +229,10 @@ class ExpoCallKitModule : Module() {
             CallEngine.setSpeakerEnabled(parseUuid(callId), enabled)
         }
 
+        AsyncFunction("playCallFeedback") { callId: String ->
+            CallEngine.playCallFeedback(parseUuid(callId))
+        }
+
         AsyncFunction("requestPermissions") { promise: Promise ->
             if (Build.VERSION.SDK_INT < 33) {
                 promise.resolve(mapOf("notifications" to "granted"))

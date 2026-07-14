@@ -267,6 +267,12 @@ public final class ExpoCallKitModule: Module {
       )
     }
 
+    AsyncFunction("playCallFeedback") { (callId: String) -> String in
+      try AudioSessionCoordinator.shared.playCallFeedback(
+        callId: try Self.parseUuid(callId)
+      )
+    }
+
     AsyncFunction("requestPermissions") { () -> [String: String] in
       // Nothing to request on iOS: CallKit UI needs no runtime permission and
       // the mic prompt is triggered by the app's media layer on first use.

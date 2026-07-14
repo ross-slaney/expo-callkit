@@ -6,6 +6,7 @@ import type {
   CallParticipant,
   CallSession,
   AudioRouteState,
+  CallFeedbackMode,
   ExpoCallKitEvents,
   IncomingCallPayload,
   OutgoingCallOptions,
@@ -176,6 +177,17 @@ export async function setSpeakerEnabled(
     assertUuid(callId, "callId"),
     enabled,
   );
+}
+
+/**
+ * Acknowledges a private in-call event without leaking a tone through
+ * speakerphone. Receiver, wired, Bluetooth, and car routes get a short tone;
+ * speaker/unknown routes return `haptic` so the app can vibrate instead.
+ */
+export async function playCallFeedback(
+  callId: string,
+): Promise<CallFeedbackMode> {
+  return ExpoCallKitModule.playCallFeedback(assertUuid(callId, "callId"));
 }
 
 /** Returns the current call session, or null when idle. */

@@ -12,6 +12,10 @@
   Android, and an explicit iOS speaker override. Route mutations are limited to
   the OS-owned active CallKit/Core-Telecom session and fail closed when stale.
 
+- Feedback: add `playCallFeedback`, which plays a short acknowledgement on
+  private call routes and returns a haptic-only result on speaker/unknown
+  routes so apps can avoid speakerphone echo.
+
 - Treat provider missed-call/terminal VoIP pushes as dismissal of a matching
   ringing or connecting call rather than a new incoming call, while preserving
   Apple's report-per-push contract and protecting already-connected media.

@@ -206,6 +206,13 @@ coded error and refresh `getAudioRouteState()` rather than guessing a fallback.
 `onAudioRouteChanged` is deliberately realtime-only; stale route snapshots are
 never replayed after the system deactivates audio.
 
+For private in-call acknowledgements, call
+`playCallFeedback(routeState.callId)`. It plays a short, low-volume tone only
+through receiver, wired, Bluetooth, car, or other private call routes. On
+speakerphone or an indeterminate route it returns `"haptic"` without playing
+audio, so the app can vibrate without an acoustic chirp reaching the remote
+party. A successful private tone returns `"audio"`.
+
 ### ACS + Telnyx (or any multi-provider app)
 
 Canonical backend pushes should include a stable `provider` key. The native
@@ -399,6 +406,7 @@ All call ids are UUID strings. Functions reject with coded errors (`ERR_CALL_EXI
 | `getAudioRouteState()`                | `Promise<AudioRouteState>`     | Read-only; unsupported capabilities are false        |
 | `selectAudioRoute(callId, routeId)`   | `Promise<void>`                | Select an id from the latest available routes         |
 | `setSpeakerEnabled(callId, enabled)`  | `Promise<void>`                | iOS override; Android fails as unsupported            |
+| `playCallFeedback(callId)`            | `Promise<"audio" \| "haptic">` | Private-route tone; haptic-safe on speaker/unknown   |
 | `getActiveCall()`                     | `Promise<CallSession \| null>` |                                                      |
 | `getVoipToken()`                      | `VoipToken \| null` (sync)     | iOS only; Android always `null`                      |
 | `registerVoipPushes()`                | `void`                         | Idempotent; automatic at launch. Android no-op       |

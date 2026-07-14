@@ -3,6 +3,8 @@ package dev.rossslaney.expocallkit
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.SystemClock
 import android.telecom.DisconnectCause
 import android.telecom.PhoneAccount
@@ -647,6 +649,24 @@ object CallEngine {
             "Android has no speaker override; select ${if (enabled) "the speaker" else "a non-speaker"} " +
                 "route returned by getAudioRouteState()",
         )
+    }
+
+    fun playCallFeedback(callId: UUID): String {
+        calls[callId] ?: throw NoSuchCallError(callId.toString())
+        if (!audioOwnership.owns(callId)) throw AudioSessionInactiveError()
+        val endpoint = controllers[callId]?.currentEndpoint ?: return "haptic"
+        if (endpoint.type == CallEndpointCompat.TYPE_SPEAKER) return "haptic"
+
+        val tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 22)
+        if (!tone.startTone(ToneGenerator.TONE_PROP_ACK, 100)) {
+            tone.release()
+            return "haptic"
+        }
+        mainScope.launch {
+            delay(160)
+            tone.release()
+        }
+        return "audio"
     }
 
     // endregion

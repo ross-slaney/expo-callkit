@@ -4,6 +4,7 @@ import type {
   CallKitPermissions,
   CallSession,
   AudioRouteState,
+  CallFeedbackMode,
   ExpoCallKitEvents,
   VoipToken,
 } from "./ExpoCallKit.types";
@@ -62,6 +63,9 @@ class ExpoCallKitWebModule extends NativeModule<ExpoCallKitEvents> {
   }
   setSpeakerEnabled(): Promise<void> {
     return Promise.reject(unavailable("setSpeakerEnabled"));
+  }
+  playCallFeedback(): Promise<CallFeedbackMode> {
+    return Promise.resolve("haptic");
   }
   getActiveCall(): Promise<CallSession | null> {
     return Promise.resolve(null);

@@ -179,6 +179,9 @@ export type AudioRouteState = {
   supportsSpeakerOverride: boolean;
 };
 
+/** How `playCallFeedback` acknowledged a private in-call event. */
+export type CallFeedbackMode = "audio" | "haptic";
+
 /** Realtime-only route update. Query `getAudioRouteState` after a cold start. */
 export type AudioRouteChangedEvent = AudioRouteState & {
   meta: EventMeta;

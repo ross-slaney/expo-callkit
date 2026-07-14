@@ -6,6 +6,7 @@ import type {
   CallParticipant,
   CallSession,
   AudioRouteState,
+  CallFeedbackMode,
   ExpoCallKitEvents,
   IncomingCallPayload,
   OutgoingCallOptions,
@@ -28,6 +29,7 @@ declare class ExpoCallKitNativeModule extends NativeModule<ExpoCallKitEvents> {
   getAudioRouteState(): Promise<AudioRouteState>;
   selectAudioRoute(callId: string, routeId: string): Promise<void>;
   setSpeakerEnabled(callId: string, enabled: boolean): Promise<void>;
+  playCallFeedback(callId: string): Promise<CallFeedbackMode>;
   getActiveCall(): Promise<CallSession | null>;
   getVoipToken(): VoipToken | null;
   registerVoipPushes(): void;
